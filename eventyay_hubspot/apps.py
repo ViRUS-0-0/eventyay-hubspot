@@ -8,7 +8,7 @@ except ImportError:
     raise RuntimeError("Please use a later version of eventyay-tickets")
 
 
-class Eventyay Hubspot PluginApp(PluginConfig):
+class EventyayHubspotPluginApp(PluginConfig):
     default = True
     name = "eventyay_hubspot"
     verbose_name = _("Eventyay Hubspot Plugin")
