@@ -1,0 +1,42 @@
+[project]
+name = "eventyay-hubspot"
+dynamic = ["version"]
+description = "This plugin allows you to integrate Eventyay with Hubspot"
+readme = "README.rst"
+license = {file = "LICENSE"}
+keywords = ["Eventyay"]
+authors = [
+    {name = "Om Vanwari", email = "mrvanwariomg@gmail.com"},
+]
+maintainers = [
+    {name = "Om Vanwari", email = "mrvanwariomg@gmail.com"},
+]
+
+dependencies = [
+]
+
+[project.entry-points."pretix.plugin"]
+eventyay_hubspot = "eventyay_hubspot:PretixPluginMeta"
+
+[project.entry-points."distutils.commands"]
+build = "pretix_plugin_build.build:CustomBuild"
+
+[build-system]
+requires = [
+    "setuptools",
+    "pretix-plugin-build",
+]
+
+[project.urls]
+homepage = "https://github.com/fossasia/eventyay-hubspot"
+repository = "https://github.com/fossasia/eventyay-hubspot"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "eventyay_hubspot.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["eventyay_hubspot*"]
+namespaces = false
