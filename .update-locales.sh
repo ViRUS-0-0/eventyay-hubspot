@@ -1,6 +1,6 @@
 #!/bin/sh
 COMPONENTS=pretix/pretix-plugin-eventyay-hubspot
-DIR=eventyay_hubspot/locale
+DIR=hubspot/locale
 # Renerates .po files used for translating the plugin
 set -e
 set -x

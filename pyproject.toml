@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.entry-points."pretix.plugin"]
-eventyay_hubspot = "eventyay_hubspot:PretixPluginMeta"
+hubspot = "hubspot:PretixPluginMeta"
 
 [project.entry-points."distutils.commands"]
 build = "pretix_plugin_build.build:CustomBuild"
@@ -35,8 +35,8 @@ repository = "https://github.com/fossasia/eventyay-hubspot"
 include-package-data = true
 
 [tool.setuptools.dynamic]
-version = {attr = "eventyay_hubspot.__version__"}
+version = {attr = "hubspot.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["eventyay_hubspot*"]
+include = ["hubspot*"]
 namespaces = false

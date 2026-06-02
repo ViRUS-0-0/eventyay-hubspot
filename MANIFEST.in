@@ -1,5 +1,5 @@
-recursive-include eventyay_hubspot/static *
-recursive-include eventyay_hubspot/templates *
-recursive-include eventyay_hubspot/locale *
+recursive-include hubspot/static *
+recursive-include hubspot/templates *
+recursive-include hubspot/locale *
 include LICENSE
 exclude .gitlab-ci.yml

@@ -23,17 +23,17 @@ Development setup
 
 This plugin has CI set up to enforce a few code style rules. To check locally, you need these packages installed::
 
-    pip install flake8 isort black
+    pip install flake8 ruff black
 
 To check your plugin for rule violations, run::
 
     black --check .
-    isort -c .
+    ruff check .
     flake8 .
 
 You can auto-fix some of these issues by running::
 
-    isort .
+    ruff --fix .
     black .
 
 To automatically check for these issues before you commit, you can run ``.install-hooks``.
