@@ -2,7 +2,7 @@
 name = "eventyay-hubspot"
 dynamic = ["version"]
 description = "This plugin allows you to integrate Eventyay with Hubspot"
-readme = "README.rst"
+readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["Eventyay"]
 authors = [
