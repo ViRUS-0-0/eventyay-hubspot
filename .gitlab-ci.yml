@@ -15,12 +15,12 @@ style:
         name: pretix/ci-image
     before_script:
         - pip install -U pip uv
-        - uv pip install --system -U wheel setuptools isort black flake8 check-manifest
+        - uv pip install --system -U wheel setuptools ruff black flake8 check-manifest
         - uv pip install --system -U git+https://github.com/pretix/pretix.git@master#egg=pretix
     script:
         - uv pip install --system -e .
         - black --check .
-        - isort -c --gitignore .
+        - ruff check .
         - flake8 --extend-exclude .cache .
         - check-manifest --ignore .cache .
 pypi:

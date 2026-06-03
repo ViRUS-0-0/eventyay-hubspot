@@ -40,7 +40,7 @@ flake8 .
 You can automatically fix formatting and simple lint errors with:
 ```bash
 black .
-ruff --fix .
+ruff check --fix .
 ```
 
 To automatically check for style issues before you commit, you can run:
