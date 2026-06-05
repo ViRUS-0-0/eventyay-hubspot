@@ -17,8 +17,7 @@ def control_nav_import(sender, request=None, **kwargs):
                     "event": request.event.slug,
                 },
             ),
-            "active": url.namespace == "plugins:hubspot"
-            and url.url_name == "hubspot",
+            "active": url.namespace == "plugins:hubspot" and url.url_name == "hubspot",
             "icon": "bar-chart",
         }
     ]
