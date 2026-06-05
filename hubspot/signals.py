@@ -1,9 +1,5 @@
 from django.dispatch import receiver
-<<<<<<< HEAD
 from django.urls import resolve, reverse
-=======
-from django.urls import resolve
->>>>>>> origin
 from django.utils.translation import gettext_lazy as _
 from eventyay.control.signals import nav_event
 
