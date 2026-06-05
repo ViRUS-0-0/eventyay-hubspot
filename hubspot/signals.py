@@ -1,5 +1,5 @@
 from django.dispatch import receiver
-from django.urls import resolve
+from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from eventyay.control.signals import nav_event
 
@@ -10,9 +10,15 @@ def control_nav_import(sender, request=None, **kwargs):
     return [
         {
             "label": _("Hubspot"),
-            "url": "",
+            "url": reverse(
+                "plugins:hubspot:hubspot",
+                kwargs={
+                    "organizer": request.event.organizer.slug,
+                    "event": request.event.slug,
+                },
+            ),
             "active": url.namespace == "plugins:hubspot"
-            and url.url_name != "settings",
+            and url.url_name == "hubspot",
             "icon": "bar-chart",
         }
     ]
