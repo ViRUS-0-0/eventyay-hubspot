@@ -29,7 +29,7 @@ def logged_in_organizer_client(client, user, organizer, event):
 
 @pytest.mark.django_db
 def test_hubspot_settings_view_logged_out(client, organizer, event, settings):
-    settings.DEBUG = True
+    settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:hubspot",
         kwargs={"organizer": organizer.slug, "event": event.slug},
@@ -43,7 +43,7 @@ def test_hubspot_settings_view_logged_out(client, organizer, event, settings):
 def test_hubspot_settings_view_wrong_organizer(
     logged_in_client, organizer, event, settings
 ):
-    settings.DEBUG = True
+    settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:hubspot",
         kwargs={"organizer": organizer.slug, "event": event.slug},
@@ -56,7 +56,7 @@ def test_hubspot_settings_view_wrong_organizer(
 def test_hubspot_settings_view_correct_organizer(
     logged_in_organizer_client, organizer, event, settings
 ):
-    settings.DEBUG = True
+    settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:hubspot",
         kwargs={"organizer": organizer.slug, "event": event.slug},
