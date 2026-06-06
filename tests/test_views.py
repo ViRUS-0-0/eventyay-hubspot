@@ -15,9 +15,12 @@ def logged_in_client(client, user):
 
 
 @pytest.fixture
-def logged_in_organizer_client(client, user, organizer):
+def logged_in_organizer_client(client, user, organizer, event):
     team = Team.objects.create(
-        organizer=organizer, name="Test Team", can_change_event_settings=True
+        organizer=organizer,
+        name="Test Team",
+        can_change_event_settings=True,
+        all_events=True,
     )
     team.members.add(user)
     client.force_login(user)
@@ -25,7 +28,8 @@ def logged_in_organizer_client(client, user, organizer):
 
 
 @pytest.mark.django_db
-def test_hubspot_settings_view_logged_out(client, organizer, event):
+def test_hubspot_settings_view_logged_out(client, organizer, event, settings):
+    settings.DEBUG = True
     url = reverse(
         "plugins:hubspot:hubspot",
         kwargs={"organizer": organizer.slug, "event": event.slug},
@@ -36,7 +40,10 @@ def test_hubspot_settings_view_logged_out(client, organizer, event):
 
 
 @pytest.mark.django_db
-def test_hubspot_settings_view_wrong_organizer(logged_in_client, organizer, event):
+def test_hubspot_settings_view_wrong_organizer(
+    logged_in_client, organizer, event, settings
+):
+    settings.DEBUG = True
     url = reverse(
         "plugins:hubspot:hubspot",
         kwargs={"organizer": organizer.slug, "event": event.slug},
@@ -47,8 +54,9 @@ def test_hubspot_settings_view_wrong_organizer(logged_in_client, organizer, even
 
 @pytest.mark.django_db
 def test_hubspot_settings_view_correct_organizer(
-    logged_in_organizer_client, organizer, event
+    logged_in_organizer_client, organizer, event, settings
 ):
+    settings.DEBUG = True
     url = reverse(
         "plugins:hubspot:hubspot",
         kwargs={"organizer": organizer.slug, "event": event.slug},

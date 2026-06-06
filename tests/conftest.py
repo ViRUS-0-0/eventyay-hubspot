@@ -19,4 +19,5 @@ def event(organizer):
         date_to=now() + timedelta(days=1),
         currency="USD",
         live=True,
+        plugins="hubspot",
     )
