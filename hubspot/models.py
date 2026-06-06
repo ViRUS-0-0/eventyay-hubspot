@@ -1,9 +1,11 @@
 from django.db import models
 from django.db.models import JSONField
+from django_scopes import ScopedManager
 
 
 class HubSpotOAuthToken(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
     access_token = models.TextField()
     refresh_token = models.TextField()
     token_type = models.CharField(max_length=50, default="bearer")
@@ -23,6 +25,7 @@ class HubSpotOAuthToken(models.Model):
 
 class HubSpotEventSettings(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
     sync_enabled = models.BooleanField(default=False)
     sync_contacts = models.BooleanField(default=True)
     sync_deals = models.BooleanField(default=True)
@@ -41,6 +44,7 @@ class HubSpotEventSettings(models.Model):
 
 class HubSpotObjectMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
     eventyay_model = models.CharField(max_length=50)
     eventyay_id = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
@@ -64,6 +68,7 @@ class HubSpotObjectMapping(models.Model):
 
 class HubSpotFieldMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
     eventyay_model = models.CharField(max_length=50)
     eventyay_field = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
@@ -88,6 +93,7 @@ class HubSpotFieldMapping(models.Model):
 
 class SyncLog(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
     object_mapping = models.ForeignKey(
         HubSpotObjectMapping, null=True, blank=True, on_delete=models.SET_NULL
     )
