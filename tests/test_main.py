@@ -1,6 +1,5 @@
 import pytest
-from django.db import IntegrityError
-
+from django.db.utils import IntegrityError
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
@@ -58,7 +57,7 @@ def test_object_mapping_model(event):
 
 
 @pytest.mark.django_db
-def test_object_mapping_unique_together(event):
+def test_object_mapping_model_duplicate(event):
     HubSpotObjectMapping.objects.create(
         event=event,
         eventyay_model="order",
@@ -72,7 +71,7 @@ def test_object_mapping_unique_together(event):
             eventyay_model="order",
             eventyay_id="101",
             hubspot_object_type="deal",
-            hubspot_object_id="999",
+            hubspot_object_id="203",
         )
 
 
@@ -90,7 +89,7 @@ def test_field_mapping_model(event):
 
 
 @pytest.mark.django_db
-def test_field_mapping_unique_together(event):
+def test_field_mapping_model_duplicate(event):
     HubSpotFieldMapping.objects.create(
         event=event,
         eventyay_model="order",
@@ -104,7 +103,7 @@ def test_field_mapping_unique_together(event):
             eventyay_model="order",
             eventyay_field="total",
             hubspot_object_type="deal",
-            hubspot_property="other_amount",
+            hubspot_property="amount_2",
         )
 
 
