@@ -3,24 +3,9 @@ from django.contrib import admin
 from .models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
-    HubSpotOAuthToken,
     HubSpotObjectMapping,
     SyncLog,
 )
-
-
-@admin.register(HubSpotOAuthToken)
-class HubSpotOAuthTokenAdmin(admin.ModelAdmin):
-    list_display = (
-        "event",
-        "hub_id",
-        "expires_at",
-        "created_at",
-        "updated_at",
-    )
-    list_filter = ("event",)
-    search_fields = ("event__name", "hub_id")
-    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(HubSpotEventSettings)
@@ -33,7 +18,7 @@ class HubSpotEventSettingsAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    list_filter = ("event", "sync_enabled", "sync_contacts", "sync_deals")
+    list_filter = ("event__organizer", "sync_enabled", "sync_contacts", "sync_deals")
     search_fields = ("event__name", "deal_pipeline", "deal_stage")
     readonly_fields = ("created_at", "updated_at")
 
@@ -49,7 +34,7 @@ class HubSpotObjectMappingAdmin(admin.ModelAdmin):
         "last_synced_at",
         "created_at",
     )
-    list_filter = ("event", "eventyay_model", "hubspot_object_type")
+    list_filter = ("event__organizer", "eventyay_model", "hubspot_object_type")
     search_fields = ("event__name", "eventyay_id", "hubspot_object_id")
     readonly_fields = ("created_at",)
 
@@ -66,7 +51,12 @@ class HubSpotFieldMappingAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    list_filter = ("event", "eventyay_model", "hubspot_object_type", "is_active")
+    list_filter = (
+        "event__organizer",
+        "eventyay_model",
+        "hubspot_object_type",
+        "is_active",
+    )
     search_fields = ("event__name", "eventyay_field", "hubspot_property")
     readonly_fields = ("created_at", "updated_at")
 
@@ -80,7 +70,7 @@ class SyncLogAdmin(admin.ModelAdmin):
         "status",
         "created_at",
     )
-    list_filter = ("event", "action", "direction", "status")
+    list_filter = ("event__organizer", "action", "direction", "status")
     search_fields = ("event__name",)
     readonly_fields = (
         "event",

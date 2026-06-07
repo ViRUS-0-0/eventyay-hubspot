@@ -1,4 +1,6 @@
 import pytest
+from django.db import IntegrityError
+
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
@@ -10,14 +12,26 @@ from hubspot.models import (
 
 @pytest.mark.django_db
 def test_oauth_token_model(event):
-    token = HubSpotOAuthToken.objects.create(
-        event=event,
-        access_token="acc_123",
-        refresh_token="ref_123",
-        hub_id="hub_1",
-    )
+    token = HubSpotOAuthToken(event=event, hub_id="hub_1")
+    token.access_token = "acc_123"
+    token.refresh_token = "ref_123"
+    token.save()
     assert token.event == event
+    assert token.access_token == "acc_123"
     assert str(token) == f"OAuth Token for {event.name}"
+
+
+@pytest.mark.django_db
+def test_oauth_token_unique_per_event(event):
+    token = HubSpotOAuthToken(event=event)
+    token.access_token = "a"
+    token.refresh_token = "r"
+    token.save()
+    with pytest.raises(IntegrityError):
+        dup = HubSpotOAuthToken(event=event)
+        dup.access_token = "b"
+        dup.refresh_token = "s"
+        dup.save()
 
 
 @pytest.mark.django_db
@@ -44,6 +58,25 @@ def test_object_mapping_model(event):
 
 
 @pytest.mark.django_db
+def test_object_mapping_unique_together(event):
+    HubSpotObjectMapping.objects.create(
+        event=event,
+        eventyay_model="order",
+        eventyay_id="101",
+        hubspot_object_type="deal",
+        hubspot_object_id="202",
+    )
+    with pytest.raises(IntegrityError):
+        HubSpotObjectMapping.objects.create(
+            event=event,
+            eventyay_model="order",
+            eventyay_id="101",
+            hubspot_object_type="deal",
+            hubspot_object_id="999",
+        )
+
+
+@pytest.mark.django_db
 def test_field_mapping_model(event):
     mapping = HubSpotFieldMapping.objects.create(
         event=event,
@@ -54,6 +87,25 @@ def test_field_mapping_model(event):
     )
     assert mapping.is_active is True
     assert str(mapping) == "order.total -> deal.amount"
+
+
+@pytest.mark.django_db
+def test_field_mapping_unique_together(event):
+    HubSpotFieldMapping.objects.create(
+        event=event,
+        eventyay_model="order",
+        eventyay_field="total",
+        hubspot_object_type="deal",
+        hubspot_property="amount",
+    )
+    with pytest.raises(IntegrityError):
+        HubSpotFieldMapping.objects.create(
+            event=event,
+            eventyay_model="order",
+            eventyay_field="total",
+            hubspot_object_type="deal",
+            hubspot_property="other_amount",
+        )
 
 
 @pytest.mark.django_db
@@ -68,3 +120,24 @@ def test_sync_log_model(event):
     assert log.action == "create"
     assert "create" in str(log)
     assert log.detail["status_code"] == 200
+
+
+@pytest.mark.django_db
+def test_sync_log_set_null_on_mapping_delete(event):
+    mapping = HubSpotObjectMapping.objects.create(
+        event=event,
+        eventyay_model="order",
+        eventyay_id="101",
+        hubspot_object_type="deal",
+        hubspot_object_id="202",
+    )
+    log = SyncLog.objects.create(
+        event=event,
+        object_mapping=mapping,
+        action="create",
+        direction="push",
+        status="success",
+    )
+    mapping.delete()
+    log.refresh_from_db()
+    assert log.object_mapping is None

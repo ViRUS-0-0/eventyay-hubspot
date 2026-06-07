@@ -1,19 +1,37 @@
 from django.db import models
 from django.db.models import JSONField
 from django_scopes import ScopedManager
+from .utils import decrypt, encrypt
 
 
 class HubSpotOAuthToken(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
-    objects = ScopedManager(organizer="event__organizer")
-    access_token = models.TextField()
-    refresh_token = models.TextField()
+    objects = models.Manager()
+    scoped = ScopedManager(organizer="event__organizer")
+    _access_token = models.TextField(db_column="access_token")
+    _refresh_token = models.TextField(db_column="refresh_token")
     token_type = models.CharField(max_length=50, default="bearer")
     expires_at = models.DateTimeField(null=True, blank=True)
     hub_id = models.CharField(max_length=100, blank=True)
     scope = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def access_token(self):
+        return decrypt(self._access_token)
+
+    @access_token.setter
+    def access_token(self, value):
+        self._access_token = encrypt(value)
+
+    @property
+    def refresh_token(self):
+        return decrypt(self._refresh_token)
+
+    @refresh_token.setter
+    def refresh_token(self, value):
+        self._refresh_token = encrypt(value)
 
     class Meta:
         verbose_name = "HubSpot OAuth Token"
@@ -25,7 +43,8 @@ class HubSpotOAuthToken(models.Model):
 
 class HubSpotEventSettings(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
-    objects = ScopedManager(organizer="event__organizer")
+    objects = models.Manager()
+    scoped = ScopedManager(organizer="event__organizer")
     sync_enabled = models.BooleanField(default=False)
     sync_contacts = models.BooleanField(default=True)
     sync_deals = models.BooleanField(default=True)
@@ -44,7 +63,8 @@ class HubSpotEventSettings(models.Model):
 
 class HubSpotObjectMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
-    objects = ScopedManager(organizer="event__organizer")
+    objects = models.Manager()
+    scoped = ScopedManager(organizer="event__organizer")
     eventyay_model = models.CharField(max_length=50)
     eventyay_id = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
@@ -68,7 +88,8 @@ class HubSpotObjectMapping(models.Model):
 
 class HubSpotFieldMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
-    objects = ScopedManager(organizer="event__organizer")
+    objects = models.Manager()
+    scoped = ScopedManager(organizer="event__organizer")
     eventyay_model = models.CharField(max_length=50)
     eventyay_field = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
@@ -92,14 +113,33 @@ class HubSpotFieldMapping(models.Model):
 
 
 class SyncLog(models.Model):
+    class Action(models.TextChoices):
+        CREATE = "create"
+        UPDATE = "update"
+        DELETE = "delete"
+        CONNECT = "connect"
+        DISCONNECT = "disconnect"
+        TOKEN_REFRESH = "token_refresh"
+        REFRESH_FAILED = "refresh_failed"
+
+    class Direction(models.TextChoices):
+        PUSH = "push"
+        PULL = "pull"
+
+    class Status(models.TextChoices):
+        SUCCESS = "success"
+        FAILED = "failed"
+        PENDING = "pending"
+
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
-    objects = ScopedManager(organizer="event__organizer")
+    objects = models.Manager()
+    scoped = ScopedManager(organizer="event__organizer")
     object_mapping = models.ForeignKey(
         HubSpotObjectMapping, null=True, blank=True, on_delete=models.SET_NULL
     )
-    action = models.CharField(max_length=20)
-    direction = models.CharField(max_length=10)
-    status = models.CharField(max_length=10)
+    action = models.CharField(max_length=20, choices=Action.choices)
+    direction = models.CharField(max_length=10, choices=Direction.choices)
+    status = models.CharField(max_length=10, choices=Status.choices)
     detail = JSONField(blank=True, default=dict)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
