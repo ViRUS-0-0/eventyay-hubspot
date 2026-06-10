@@ -17,6 +17,8 @@ def test_oauth_token_model(event):
     token.refresh_token = "ref_123"
     token.save()
     assert token.event == event
+    assert token._access_token != "acc_123"
+    assert token._refresh_token != "ref_123"
     assert token.access_token == "acc_123"
     assert str(token) == f"OAuth Token for {event.name}"
 
