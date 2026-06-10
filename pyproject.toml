@@ -41,3 +41,6 @@ version = {attr = "hubspot.__version__"}
 [tool.setuptools.packages.find]
 include = ["hubspot*"]
 namespaces = false
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "eventyay.config.settings"
