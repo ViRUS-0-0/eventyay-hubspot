@@ -1,5 +1,6 @@
 import pytest
-from django.db.utils import IntegrityError
+from django.db import IntegrityError, transaction
+
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
@@ -16,6 +17,8 @@ def test_oauth_token_model(event):
     token.refresh_token = "ref_123"
     token.save()
     assert token.event == event
+    assert token._access_token != "acc_123"
+    assert token._refresh_token != "ref_123"
     assert token.access_token == "acc_123"
     assert str(token) == f"OAuth Token for {event.name}"
 
@@ -27,10 +30,11 @@ def test_oauth_token_unique_per_event(event):
     token.refresh_token = "r"
     token.save()
     with pytest.raises(IntegrityError):
-        dup = HubSpotOAuthToken(event=event)
-        dup.access_token = "b"
-        dup.refresh_token = "s"
-        dup.save()
+        with transaction.atomic():
+            dup = HubSpotOAuthToken(event=event)
+            dup.access_token = "b"
+            dup.refresh_token = "s"
+            dup.save()
 
 
 @pytest.mark.django_db
@@ -66,13 +70,14 @@ def test_object_mapping_model_duplicate(event):
         hubspot_object_id="202",
     )
     with pytest.raises(IntegrityError):
-        HubSpotObjectMapping.objects.create(
-            event=event,
-            eventyay_model="order",
-            eventyay_id="101",
-            hubspot_object_type="deal",
-            hubspot_object_id="203",
-        )
+        with transaction.atomic():
+            HubSpotObjectMapping.objects.create(
+                event=event,
+                eventyay_model="order",
+                eventyay_id="101",
+                hubspot_object_type="deal",
+                hubspot_object_id="999",
+            )
 
 
 @pytest.mark.django_db
@@ -98,13 +103,14 @@ def test_field_mapping_model_duplicate(event):
         hubspot_property="amount",
     )
     with pytest.raises(IntegrityError):
-        HubSpotFieldMapping.objects.create(
-            event=event,
-            eventyay_model="order",
-            eventyay_field="total",
-            hubspot_object_type="deal",
-            hubspot_property="amount_2",
-        )
+        with transaction.atomic():
+            HubSpotFieldMapping.objects.create(
+                event=event,
+                eventyay_model="order",
+                eventyay_field="total",
+                hubspot_object_type="deal",
+                hubspot_property="other_amount",
+            )
 
 
 @pytest.mark.django_db

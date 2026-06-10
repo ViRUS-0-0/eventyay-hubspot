@@ -4,6 +4,7 @@ from .models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
     HubSpotObjectMapping,
+    HubSpotOAuthToken,
     SyncLog,
 )
 
@@ -81,6 +82,28 @@ class SyncLogAdmin(admin.ModelAdmin):
         "detail",
         "created_at",
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(HubSpotOAuthToken)
+class HubSpotOAuthTokenAdmin(admin.ModelAdmin):
+    list_display = (
+        "event",
+        "hub_id",
+        "token_type",
+        "expires_at",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("event__organizer", "token_type")
+    search_fields = ("event__name", "hub_id")
+    readonly_fields = ("created_at", "updated_at")
+    exclude = ("_access_token", "_refresh_token")
 
     def has_add_permission(self, request):
         return False

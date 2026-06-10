@@ -6,8 +6,7 @@ from .utils import decrypt, encrypt
 
 class HubSpotOAuthToken(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
-    objects = models.Manager()
-    scoped = ScopedManager(organizer="event__organizer")
+    objects = ScopedManager(organizer="event__organizer")
     _access_token = models.TextField(db_column="access_token")
     _refresh_token = models.TextField(db_column="refresh_token")
     token_type = models.CharField(max_length=50, default="bearer")
@@ -43,8 +42,7 @@ class HubSpotOAuthToken(models.Model):
 
 class HubSpotEventSettings(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
-    objects = models.Manager()
-    scoped = ScopedManager(organizer="event__organizer")
+    objects = ScopedManager(organizer="event__organizer")
     sync_enabled = models.BooleanField(default=False)
     sync_contacts = models.BooleanField(default=True)
     sync_deals = models.BooleanField(default=True)
@@ -63,8 +61,7 @@ class HubSpotEventSettings(models.Model):
 
 class HubSpotObjectMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
-    objects = models.Manager()
-    scoped = ScopedManager(organizer="event__organizer")
+    objects = ScopedManager(organizer="event__organizer")
     eventyay_model = models.CharField(max_length=50)
     eventyay_id = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
@@ -88,8 +85,7 @@ class HubSpotObjectMapping(models.Model):
 
 class HubSpotFieldMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
-    objects = models.Manager()
-    scoped = ScopedManager(organizer="event__organizer")
+    objects = ScopedManager(organizer="event__organizer")
     eventyay_model = models.CharField(max_length=50)
     eventyay_field = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
@@ -132,8 +128,7 @@ class SyncLog(models.Model):
         PENDING = "pending"
 
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
-    objects = models.Manager()
-    scoped = ScopedManager(organizer="event__organizer")
+    objects = ScopedManager(organizer="event__organizer")
     object_mapping = models.ForeignKey(
         HubSpotObjectMapping, null=True, blank=True, on_delete=models.SET_NULL
     )

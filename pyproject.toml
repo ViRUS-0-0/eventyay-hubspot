@@ -35,6 +35,13 @@ repository = "https://github.com/fossasia/eventyay-hubspot"
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.package-data]
+hubspot = [
+    "static/**/*",
+    "templates/**/*",
+    "locale/**/*",
+]
+
 [tool.setuptools.dynamic]
 version = {attr = "hubspot.__version__"}
 
@@ -44,3 +51,9 @@ namespaces = false
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "eventyay.config.settings"
+
+[tool.coverage.run]
+source = ["hubspot"]
+omit = [
+    "*/migrations/*",
+]
