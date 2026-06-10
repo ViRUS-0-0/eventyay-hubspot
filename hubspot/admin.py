@@ -28,15 +28,15 @@ class HubSpotEventSettingsAdmin(admin.ModelAdmin):
 class HubSpotObjectMappingAdmin(admin.ModelAdmin):
     list_display = (
         "event",
-        "eventyay_model",
-        "eventyay_id",
+        "content_type",
+        "object_id",
         "hubspot_object_type",
         "hubspot_object_id",
         "last_synced_at",
         "created_at",
     )
-    list_filter = ("event__organizer", "eventyay_model", "hubspot_object_type")
-    search_fields = ("event__name", "eventyay_id", "hubspot_object_id")
+    list_filter = ("event__organizer", "content_type", "hubspot_object_type")
+    search_fields = ("event__name", "object_id", "hubspot_object_id")
     readonly_fields = ("created_at",)
 
 
@@ -44,7 +44,7 @@ class HubSpotObjectMappingAdmin(admin.ModelAdmin):
 class HubSpotFieldMappingAdmin(admin.ModelAdmin):
     list_display = (
         "event",
-        "eventyay_model",
+        "content_type",
         "eventyay_field",
         "hubspot_object_type",
         "hubspot_property",
@@ -54,7 +54,7 @@ class HubSpotFieldMappingAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "event__organizer",
-        "eventyay_model",
+        "content_type",
         "hubspot_object_type",
         "is_active",
     )
