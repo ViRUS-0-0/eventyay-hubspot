@@ -1,6 +1,8 @@
 import pytest
 from django.db import IntegrityError, transaction
 
+from django.contrib.contenttypes.models import ContentType
+
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
@@ -49,23 +51,25 @@ def test_event_settings_model(event):
 
 @pytest.mark.django_db
 def test_object_mapping_model(event):
+    content_type = ContentType.objects.get_for_model(event)
     mapping = HubSpotObjectMapping.objects.create(
         event=event,
-        eventyay_model="order",
-        eventyay_id="101",
+        content_type=content_type,
+        object_id="101",
         hubspot_object_type="deal",
         hubspot_object_id="202",
     )
-    assert mapping.eventyay_model == "order"
-    assert str(mapping) == "order (101) -> deal (202)"
+    assert mapping.content_type == content_type
+    assert str(mapping) == f"{content_type.model} (101) -> deal (202)"
 
 
 @pytest.mark.django_db
 def test_object_mapping_unique_together(event):
+    content_type = ContentType.objects.get_for_model(event)
     HubSpotObjectMapping.objects.create(
         event=event,
-        eventyay_model="order",
-        eventyay_id="101",
+        content_type=content_type,
+        object_id="101",
         hubspot_object_type="deal",
         hubspot_object_id="202",
     )
@@ -73,8 +77,8 @@ def test_object_mapping_unique_together(event):
         with transaction.atomic():
             HubSpotObjectMapping.objects.create(
                 event=event,
-                eventyay_model="order",
-                eventyay_id="101",
+                content_type=content_type,
+                object_id="101",
                 hubspot_object_type="deal",
                 hubspot_object_id="999",
             )
@@ -82,22 +86,24 @@ def test_object_mapping_unique_together(event):
 
 @pytest.mark.django_db
 def test_field_mapping_model(event):
+    content_type = ContentType.objects.get_for_model(event)
     mapping = HubSpotFieldMapping.objects.create(
         event=event,
-        eventyay_model="order",
+        content_type=content_type,
         eventyay_field="total",
         hubspot_object_type="deal",
         hubspot_property="amount",
     )
     assert mapping.is_active is True
-    assert str(mapping) == "order.total -> deal.amount"
+    assert str(mapping) == f"{content_type.model}.total -> deal.amount"
 
 
 @pytest.mark.django_db
 def test_field_mapping_unique_together(event):
+    content_type = ContentType.objects.get_for_model(event)
     HubSpotFieldMapping.objects.create(
         event=event,
-        eventyay_model="order",
+        content_type=content_type,
         eventyay_field="total",
         hubspot_object_type="deal",
         hubspot_property="amount",
@@ -106,7 +112,7 @@ def test_field_mapping_unique_together(event):
         with transaction.atomic():
             HubSpotFieldMapping.objects.create(
                 event=event,
-                eventyay_model="order",
+                content_type=content_type,
                 eventyay_field="total",
                 hubspot_object_type="deal",
                 hubspot_property="other_amount",
@@ -129,10 +135,11 @@ def test_sync_log_model(event):
 
 @pytest.mark.django_db
 def test_sync_log_set_null_on_mapping_delete(event):
+    content_type = ContentType.objects.get_for_model(event)
     mapping = HubSpotObjectMapping.objects.create(
         event=event,
-        eventyay_model="order",
-        eventyay_id="101",
+        content_type=content_type,
+        object_id="101",
         hubspot_object_type="deal",
         hubspot_object_id="202",
     )
