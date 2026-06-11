@@ -55,7 +55,7 @@ def test_object_mapping_model(event):
     mapping = HubSpotObjectMapping.objects.create(
         event=event,
         content_type=content_type,
-        object_id="101",
+        object_id=101,
         hubspot_object_type="deal",
         hubspot_object_id="202",
     )
@@ -69,7 +69,7 @@ def test_object_mapping_unique_together(event):
     HubSpotObjectMapping.objects.create(
         event=event,
         content_type=content_type,
-        object_id="101",
+        object_id=101,
         hubspot_object_type="deal",
         hubspot_object_id="202",
     )
@@ -78,7 +78,7 @@ def test_object_mapping_unique_together(event):
             HubSpotObjectMapping.objects.create(
                 event=event,
                 content_type=content_type,
-                object_id="101",
+                object_id=101,
                 hubspot_object_type="deal",
                 hubspot_object_id="999",
             )
@@ -139,7 +139,7 @@ def test_sync_log_set_null_on_mapping_delete(event):
     mapping = HubSpotObjectMapping.objects.create(
         event=event,
         content_type=content_type,
-        object_id="101",
+        object_id=101,
         hubspot_object_type="deal",
         hubspot_object_id="202",
     )
