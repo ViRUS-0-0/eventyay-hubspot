@@ -92,7 +92,7 @@ class HubSpotObjectMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
     objects = ScopedManager(organizer="event__organizer")
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.CharField(max_length=190)
+    object_id = models.BigIntegerField()
     content_object = GenericForeignKey("content_type", "object_id")
     hubspot_object_type = models.CharField(max_length=50)
     hubspot_object_id = models.CharField(max_length=190)
