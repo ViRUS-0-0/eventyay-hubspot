@@ -13,7 +13,11 @@
         </div>
         <div class="panel-body">
             {% if is_connected %}
-                <p class="text-success">{% translate "This event is currently connected to a HubSpot account." %}</p>
+                <p class="text-success">
+                    {% translate "Connected to" %}
+                    {% if hub_name %}<strong>{{ hub_name }}</strong>{% endif %}
+                    {% if hub_id %}(ID: {{ hub_id }}){% endif %}
+                </p>
                 <form method="post" action="{% url "plugins:hubspot:disconnect" organizer=request.event.organizer.slug event=request.event.slug %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger">

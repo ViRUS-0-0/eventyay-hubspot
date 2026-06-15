@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AuditLog,
     HubSpotEventSettings,
     HubSpotFieldMapping,
     HubSpotObjectMapping,
@@ -104,6 +105,26 @@ class HubSpotOAuthTokenAdmin(admin.ModelAdmin):
     search_fields = ("event__name", "hub_id")
     readonly_fields = ("created_at", "updated_at")
     exclude = ("_access_token", "_refresh_token")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ("organizer", "event", "action", "ip_address", "created_at")
+    list_filter = ("action", "organizer")
+    search_fields = ("organizer__name", "event__name")
+    readonly_fields = (
+        "organizer",
+        "event",
+        "action",
+        "ip_address",
+        "created_at",
+    )
 
     def has_add_permission(self, request):
         return False

@@ -15,7 +15,23 @@ from django_scopes import scope
 from eventyay.base.models import Event
 from eventyay.control.permissions import EventPermissionRequiredMixin
 
-from .models import HubSpotOAuthToken, SyncLog, SyncAction, SyncDirection, SyncStatus
+from .models import (
+    AuditAction,
+    AuditLog,
+    HubSpotOAuthToken,
+    SyncAction,
+    SyncDirection,
+    SyncLog,
+    SyncStatus,
+)
+
+
+def get_client_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
 
 # Environment variables are loaded dynamically in the views
 
@@ -28,7 +44,13 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["is_connected"] = hasattr(self.request.event, "hubspotoauthtoken")
+        try:
+            token = self.request.event.hubspotoauthtoken
+            context["is_connected"] = True
+            context["hub_name"] = token.hub_name
+            context["hub_id"] = token.hub_id
+        except HubSpotOAuthToken.DoesNotExist:
+            context["is_connected"] = False
         return context
 
 
@@ -149,14 +171,33 @@ class EventHubSpotCallbackView(View):
             now() + datetime.timedelta(seconds=expires_in) if expires_in else None
         )
 
+        # Fetch portal info from HubSpot token info endpoint
+        hub_id = ""
+        hub_name = ""
+        access_token = data.get("access_token", "")
+        if access_token:
+            try:
+                info_resp = requests.get(
+                    f"https://api.hubapi.com/oauth/v1/access-tokens/{access_token}",
+                    timeout=10,
+                )
+                if info_resp.ok:
+                    info = info_resp.json()
+                    hub_id = str(info.get("hub_id", ""))
+                    hub_name = info.get("hub_domain", "")
+            except requests.RequestException:
+                pass
+
         with scope(event=event):
             HubSpotOAuthToken.objects.update_or_create(
                 event=event,
                 defaults={
-                    "access_token": data.get("access_token"),
+                    "access_token": access_token,
                     "refresh_token": data.get("refresh_token"),
                     "token_type": data.get("token_type", "bearer"),
                     "expires_at": expires_at,
+                    "hub_id": hub_id,
+                    "hub_name": hub_name,
                     "scope": os.environ.get(
                         "HUBSPOT_SCOPES",
                         "oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write",
@@ -170,6 +211,13 @@ class EventHubSpotCallbackView(View):
                 direction=SyncDirection.PUSH,
                 status=SyncStatus.SUCCESS,
                 detail={"message": "Connected to HubSpot"},
+            )
+
+            AuditLog.objects.create(
+                organizer=event.organizer,
+                event=event,
+                action=AuditAction.CONNECT,
+                ip_address=get_client_ip(request),
             )
 
         messages.success(request, _("Successfully connected to HubSpot."))
@@ -225,6 +273,12 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
                 direction=SyncDirection.PUSH,
                 status=SyncStatus.SUCCESS,
                 detail={"message": "Disconnected from HubSpot"},
+            )
+            AuditLog.objects.create(
+                organizer=request.event.organizer,
+                event=request.event,
+                action=AuditAction.DISCONNECT,
+                ip_address=get_client_ip(request),
             )
 
         messages.success(request, _("Successfully disconnected from HubSpot."))

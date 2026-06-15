@@ -41,6 +41,7 @@ class HubSpotOAuthToken(models.Model):
     )
     expires_at = models.DateTimeField(null=True, blank=True)
     hub_id = models.CharField(max_length=100, blank=True)
+    hub_name = models.CharField(max_length=200, blank=True)
     scope = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -158,3 +159,29 @@ class SyncLog(models.Model):
 
     def __str__(self):
         return f"{self.action} ({self.direction}) - {self.status} at {self.created_at}"
+
+
+class AuditAction(models.TextChoices):
+    CONNECT = "connect"
+    DISCONNECT = "disconnect"
+    TOKEN_REFRESH = "token_refresh"
+    REFRESH_FAILED = "refresh_failed"
+
+
+class AuditLog(models.Model):
+    organizer = models.ForeignKey("base.Organizer", on_delete=models.CASCADE)
+    event = models.ForeignKey(
+        "base.Event", null=True, blank=True, on_delete=models.SET_NULL
+    )
+    action = models.CharField(max_length=20, choices=AuditAction.choices)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    objects = ScopedManager(organizer="organizer")
+
+    class Meta:
+        verbose_name = "Audit Log"
+        verbose_name_plural = "Audit Logs"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.action} by {self.organizer} at {self.created_at}"

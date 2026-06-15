@@ -6,7 +6,15 @@ from django.db import transaction
 from django.utils.timezone import now
 from django_scopes import scope
 
-from .models import HubSpotOAuthToken, SyncLog, SyncAction, SyncDirection, SyncStatus
+from .models import (
+    AuditAction,
+    AuditLog,
+    HubSpotOAuthToken,
+    SyncAction,
+    SyncDirection,
+    SyncLog,
+    SyncStatus,
+)
 
 
 def get_valid_hubspot_token(event) -> str | None:
@@ -48,6 +56,11 @@ def get_valid_hubspot_token(event) -> str | None:
                 status=SyncStatus.FAILED,
                 detail={"error": response.text},
             )
+            AuditLog.objects.create(
+                organizer=event.organizer,
+                event=event,
+                action=AuditAction.REFRESH_FAILED,
+            )
             return None
 
         data = response.json()
@@ -69,6 +82,11 @@ def get_valid_hubspot_token(event) -> str | None:
             direction=SyncDirection.PUSH,
             status=SyncStatus.SUCCESS,
             detail={"message": "Token refreshed successfully"},
+        )
+        AuditLog.objects.create(
+            organizer=event.organizer,
+            event=event,
+            action=AuditAction.TOKEN_REFRESH,
         )
 
         return token.access_token
