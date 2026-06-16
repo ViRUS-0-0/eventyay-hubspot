@@ -2,6 +2,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import JSONField
+from django.utils.translation import gettext_lazy as _
 from django_scopes import ScopedManager
 from .utils import decrypt, encrypt
 
@@ -185,3 +186,39 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.action} by {self.organizer} at {self.created_at}"
+
+
+class EventyayObjectType(models.TextChoices):
+    ORDER = "order", _("Order")
+    ORDER_POSITION = "order_position", _("Order position")
+
+
+class HubSpotObjectType(models.TextChoices):
+    CONTACTS = "contacts", _("Contacts")
+    DEALS = "deals", _("Deals")
+
+
+class ObjectTypeMapping(models.Model):
+    event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
+    eventyay_object_type = models.CharField(
+        max_length=50, choices=EventyayObjectType.choices
+    )
+    hubspot_object_type = models.CharField(
+        max_length=50, choices=HubSpotObjectType.choices
+    )
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("event", "eventyay_object_type", "hubspot_object_type")
+        verbose_name = _("Object Type Mapping")
+        verbose_name_plural = _("Object Type Mappings")
+        ordering = ["position", "pk"]
+
+    def __str__(self):
+        return (
+            f"{self.get_eventyay_object_type_display()}"
+            f" \u2192 {self.get_hubspot_object_type_display()}"
+        )

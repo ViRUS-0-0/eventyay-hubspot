@@ -34,4 +34,259 @@
             {% endif %}
         </div>
     </div>
+
+    {% if is_connected %}
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% translate "Object mappings" %}</h3>
+        </div>
+        <div class="panel-body">
+            <p>{% translate "Set up object mappings below so that the system automatically creates or updates HubSpot objects." %}</p>
+            <p class="text-muted">
+                {% translate 'Depending on whether you select "orders" or "order positions" as the "eventyay object type", one HubSpot object is created for each order or one for each order item. The selection under "HubSpot object type" determines into which type of HubSpot object the data is stored.' %}
+            </p>
+
+            <form method="post" id="mapping-form">
+                {% csrf_token %}
+                {{ formset.management_form }}
+
+                {% if formset.non_form_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in formset.non_form_errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div id="mapping-rows">
+                    <div class="row" style="margin-bottom: 5px;">
+                        <div class="col-md-4"><strong>{% translate "eventyay object type" %}</strong></div>
+                        <div class="col-md-4"><strong>{% translate "HubSpot object type" %}</strong></div>
+                        <div class="col-md-4"></div>
+                    </div>
+                    {% for form in formset %}
+                    <div class="mapping-row" style="margin-bottom: 8px;{% if form.instance.pk %}" data-id="{{ form.instance.pk }}{% endif %}">
+                        {{ form.id }}
+                        {{ form.position }}
+                        <div class="row">
+                            <div class="col-md-4">
+                                {{ form.eventyay_object_type }}
+                                {% if form.eventyay_object_type.errors %}
+                                    <span class="text-danger">{{ form.eventyay_object_type.errors.0 }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.hubspot_object_type }}
+                                {% if form.hubspot_object_type.errors %}
+                                    <span class="text-danger">{{ form.hubspot_object_type.errors.0 }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-default btn-edit-mapping" title="{% translate 'Edit mapping' %}">
+                                        <i class="fa fa-pencil"></i> {% translate "Edit mapping" %}
+                                    </button>
+                                    <button type="button" class="btn btn-default btn-move-up" title="{% translate 'Move up' %}">
+                                        <i class="fa fa-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-default btn-move-down" title="{% translate 'Move down' %}">
+                                        <i class="fa fa-arrow-down"></i>
+                                    </button>
+                                    <span style="display:none;">{{ form.DELETE }}</span>
+                                    <button type="button" class="btn btn-danger btn-delete-mapping" title="{% translate 'Delete' %}">
+                                        <i class="fa fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" class="btn btn-default btn-sm" id="add-mapping" style="margin-top: 5px;">
+                    <i class="fa fa-plus"></i> {% translate "Add mapping" %}
+                </button>
+
+                <p class="text-muted" style="margin-top: 10px;">
+                    <i class="fa fa-info-circle"></i>
+                    {% translate "Multiple object mappings will be evaluated in order. Associations can reference all objects created earlier on." %}
+                </p>
+
+                <div class="text-right" style="margin-top: 15px;">
+                    <button type="submit" class="btn btn-primary">
+                        {% translate "Save" %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var container = document.getElementById('mapping-rows');
+        var totalFormsInput = document.querySelector('input[name="objecttypemapping_set-TOTAL_FORMS"]');
+        var addBtn = document.getElementById('add-mapping');
+        var PREFIX = 'objecttypemapping_set';
+
+        if (!container || !totalFormsInput || !addBtn) return;
+
+        function getEmptyRow(index) {
+            var wrapper = document.createElement('div');
+            wrapper.className = 'mapping-row';
+            wrapper.style.marginBottom = '8px';
+
+            var idInput = document.createElement('input');
+            idInput.type = 'hidden';
+            idInput.name = PREFIX + '-' + index + '-id';
+            idInput.id = 'id_' + PREFIX + '-' + index + '-id';
+            wrapper.appendChild(idInput);
+
+            var posInput = document.createElement('input');
+            posInput.type = 'hidden';
+            posInput.name = PREFIX + '-' + index + '-position';
+            posInput.id = 'id_' + PREFIX + '-' + index + '-position';
+            posInput.className = 'mapping-position';
+            posInput.value = '0';
+            wrapper.appendChild(posInput);
+
+            var row = document.createElement('div');
+            row.className = 'row';
+
+            // eventyay select
+            var col1 = document.createElement('div');
+            col1.className = 'col-md-4';
+            var select1 = document.createElement('select');
+            select1.name = PREFIX + '-' + index + '-eventyay_object_type';
+            select1.id = 'id_' + PREFIX + '-' + index + '-eventyay_object_type';
+            select1.className = 'form-control';
+            var ref1 = document.querySelector('select[name$="-eventyay_object_type"]');
+            if (ref1) {
+                select1.innerHTML = ref1.innerHTML;
+                select1.selectedIndex = 0;
+            } else {
+                select1.innerHTML = '<option value="">---------</option><option value="order">Order</option><option value="order_position">Order position</option>';
+            }
+            col1.appendChild(select1);
+            row.appendChild(col1);
+
+            // hubspot select
+            var col2 = document.createElement('div');
+            col2.className = 'col-md-4';
+            var select2 = document.createElement('select');
+            select2.name = PREFIX + '-' + index + '-hubspot_object_type';
+            select2.id = 'id_' + PREFIX + '-' + index + '-hubspot_object_type';
+            select2.className = 'form-control';
+            var ref2 = document.querySelector('select[name$="-hubspot_object_type"]');
+            if (ref2) {
+                select2.innerHTML = ref2.innerHTML;
+                select2.selectedIndex = 0;
+            } else {
+                select2.innerHTML = '<option value="">---------</option><option value="contacts">Contacts</option><option value="deals">Deals</option>';
+            }
+            col2.appendChild(select2);
+            row.appendChild(col2);
+
+            // action buttons
+            var col3 = document.createElement('div');
+            col3.className = 'col-md-4';
+            var btnGroup = document.createElement('div');
+            btnGroup.className = 'btn-group';
+            btnGroup.setAttribute('role', 'group');
+
+            var editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'btn btn-default btn-edit-mapping';
+            editBtn.innerHTML = '<i class="fa fa-pencil"></i> {% translate "Edit mapping" %}';
+
+            var upBtn = document.createElement('button');
+            upBtn.type = 'button';
+            upBtn.className = 'btn btn-default btn-move-up';
+            upBtn.innerHTML = '<i class="fa fa-arrow-up"></i>';
+
+            var downBtn = document.createElement('button');
+            downBtn.type = 'button';
+            downBtn.className = 'btn btn-default btn-move-down';
+            downBtn.innerHTML = '<i class="fa fa-arrow-down"></i>';
+
+            var deleteInput = document.createElement('input');
+            deleteInput.type = 'hidden';
+            deleteInput.name = PREFIX + '-' + index + '-DELETE';
+            deleteInput.id = 'id_' + PREFIX + '-' + index + '-DELETE';
+
+            var delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'btn btn-danger btn-delete-mapping';
+            delBtn.innerHTML = '<i class="fa fa-trash"></i>';
+
+            btnGroup.appendChild(editBtn);
+            btnGroup.appendChild(upBtn);
+            btnGroup.appendChild(downBtn);
+            btnGroup.appendChild(deleteInput);
+            btnGroup.appendChild(delBtn);
+            col3.appendChild(btnGroup);
+            row.appendChild(col3);
+
+            wrapper.appendChild(row);
+            return wrapper;
+        }
+
+        addBtn.addEventListener('click', function() {
+            var currentTotal = parseInt(totalFormsInput.value, 10);
+            var newRow = getEmptyRow(currentTotal);
+            container.appendChild(newRow);
+            totalFormsInput.value = currentTotal + 1;
+        });
+
+        container.addEventListener('click', function(e) {
+            var target = e.target.closest('button');
+            if (!target) return;
+            var row = target.closest('.mapping-row');
+            if (!row) return;
+
+            if (target.classList.contains('btn-delete-mapping')) {
+                // Visually hide the row
+                row.style.display = 'none';
+
+                // Check the Django DELETE checkbox if it exists
+                var deleteInput = row.querySelector('input[name$="-DELETE"]');
+                if (deleteInput) {
+                    deleteInput.checked = true;
+                    deleteInput.value = 'on';
+                }
+
+                // Clear the selects so Django treats extra forms as empty/ignored
+                var selects = row.querySelectorAll('select');
+                selects.forEach(function(s) { s.value = ''; });
+
+            } else if (target.classList.contains('btn-move-up')) {
+                var prev = row.previousElementSibling;
+                if (prev && prev.classList.contains('mapping-row')) {
+                    container.insertBefore(row, prev);
+                }
+            } else if (target.classList.contains('btn-move-down')) {
+                var next = row.nextElementSibling;
+                if (next && next.classList.contains('mapping-row')) {
+                    container.insertBefore(next, row);
+                }
+            }
+        });
+
+        var form = document.getElementById('mapping-form');
+        form.addEventListener('submit', function() {
+            var rows = container.querySelectorAll('.mapping-row');
+            var pos = 0;
+            rows.forEach(function(row) {
+                var posInput = row.querySelector('.mapping-position');
+                if (posInput) {
+                    posInput.value = pos++;
+                }
+            });
+        });
+
+        if (container.querySelectorAll('.mapping-row').length === 0) {
+            addBtn.click();
+        }
+    });
+    </script>
+    {% endif %}
 {% endblock %}
