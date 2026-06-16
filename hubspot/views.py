@@ -13,9 +13,13 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
 from django_scopes import scope
 from eventyay.base.models import Event
+
 from eventyay.control.permissions import EventPermissionRequiredMixin
 
 from .models import HubSpotOAuthToken, SyncLog, SyncAction, SyncDirection, SyncStatus
+
+# Environment variables are loaded dynamically in the views
+
 
 # Environment variables are loaded dynamically in the views
 
