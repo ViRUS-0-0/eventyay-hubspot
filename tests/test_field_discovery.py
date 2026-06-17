@@ -21,11 +21,25 @@ def test_get_available_fields_order():
     assert "total" in keys
     assert "datetime" in keys
     assert "email" in keys
+    assert "email_domain" in keys
+    assert "event_and_order_code" in keys
+    assert "payment_datetime" in keys
+    assert "locale" in keys
+    assert "order_link" in keys
 
     # Invoice address fields
     assert "invoice_name" in keys
     assert "invoice_company" in keys
-    assert "invoice_address" in keys
+    assert "invoice_given_name" in keys
+    assert "invoice_family_name" in keys
+    assert "invoice_street" in keys
+    assert "invoice_zip" in keys
+    assert "invoice_city" in keys
+    assert "invoice_country" in keys
+
+    # Event fields
+    assert "event_slug" in keys
+    assert "event_name" in keys
 
     # Validate structure
     for field in fields:
@@ -99,12 +113,16 @@ def test_get_available_fields_order_position_with_event(event):
 
         fields = get_available_fields("order_position", event=event)
 
-    # Should have 2 base fields + 5 active questions (N, B, D, S, M)
-    assert len(fields) == 7
+    # Should have 23 base fields + 5 active questions (N, B, D, S, M)
+    assert len(fields) == 28
 
     keys = [f["key"] for f in fields]
     assert "attendee_name" in keys
     assert "attendee_email" in keys
+    assert "company" in keys
+    assert "price" in keys
+    assert "order_code" in keys
+    assert "item_name" in keys
 
     # Find question fields
     question_fields = [f for f in fields if f["key"].startswith("question_")]
