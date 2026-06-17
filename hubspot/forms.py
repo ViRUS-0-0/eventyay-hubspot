@@ -15,10 +15,18 @@ class ObjectTypeMappingForm(forms.ModelForm):
             "position": forms.HiddenInput(attrs={"class": "mapping-position"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "position" in self.fields:
+            self.fields["position"].required = False
+
+    def clean_position(self):
+        pos = self.cleaned_data.get("position")
+        return pos if pos is not None else 0
+
 
 class BaseObjectTypeMappingFormSet(forms.BaseInlineFormSet):
     def clean(self):
-        super().clean()
         seen = set()
         for form in self.forms:
             if self._should_delete_form(form):
@@ -39,6 +47,7 @@ class BaseObjectTypeMappingFormSet(forms.BaseInlineFormSet):
                     )
                 )
             seen.add(pair)
+        super().clean()
 
 
 ObjectTypeMappingFormSet = forms.inlineformset_factory(

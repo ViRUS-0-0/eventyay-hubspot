@@ -50,6 +50,7 @@ def test_create_object_mapping(logged_in_organizer_client, organizer, event, set
         "objecttypemapping_set-MAX_NUM_FORMS": "1000",
         "objecttypemapping_set-0-eventyay_object_type": "order",
         "objecttypemapping_set-0-hubspot_object_type": "contacts",
+        "objecttypemapping_set-0-position": "0",
         "objecttypemapping_set-0-id": "",
     }
     response = logged_in_organizer_client.post(url, data)
@@ -75,9 +76,11 @@ def test_duplicate_mapping_blocked(
         "objecttypemapping_set-MAX_NUM_FORMS": "1000",
         "objecttypemapping_set-0-eventyay_object_type": "order",
         "objecttypemapping_set-0-hubspot_object_type": "contacts",
+        "objecttypemapping_set-0-position": "0",
         "objecttypemapping_set-0-id": "",
         "objecttypemapping_set-1-eventyay_object_type": "order",
         "objecttypemapping_set-1-hubspot_object_type": "contacts",
+        "objecttypemapping_set-1-position": "1",
         "objecttypemapping_set-1-id": "",
     }
     response = logged_in_organizer_client.post(url, data)
@@ -104,6 +107,7 @@ def test_edit_existing_mapping(logged_in_organizer_client, organizer, event, set
         "objecttypemapping_set-MAX_NUM_FORMS": "1000",
         "objecttypemapping_set-0-eventyay_object_type": "order",
         "objecttypemapping_set-0-hubspot_object_type": "deals",
+        "objecttypemapping_set-0-position": "0",
         "objecttypemapping_set-0-id": str(mapping.pk),
     }
     response = logged_in_organizer_client.post(url, data)
@@ -129,6 +133,7 @@ def test_delete_mapping(logged_in_organizer_client, organizer, event, settings):
         "objecttypemapping_set-MAX_NUM_FORMS": "1000",
         "objecttypemapping_set-0-eventyay_object_type": "order",
         "objecttypemapping_set-0-hubspot_object_type": "contacts",
+        "objecttypemapping_set-0-position": "0",
         "objecttypemapping_set-0-id": str(mapping.pk),
         "objecttypemapping_set-0-DELETE": "on",
     }
