@@ -7,6 +7,7 @@ import requests
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
@@ -284,6 +285,10 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
                 action=AuditAction.DISCONNECT,
                 ip_address=get_client_ip(request),
             )
+
+        # Clear cached HubSpot properties
+        cache.delete(f"hubspot_properties_{request.event.id}_contact")
+        cache.delete(f"hubspot_properties_{request.event.id}_deal")
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)

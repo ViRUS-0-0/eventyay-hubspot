@@ -6,7 +6,11 @@ from django.utils.timezone import now
 from django_scopes import scope
 
 from hubspot.models import HubSpotOAuthToken
-from hubspot.services import get_valid_hubspot_token
+from hubspot.services import (
+    get_valid_hubspot_token,
+    get_hubspot_properties,
+    HubSpotFetchError,
+)
 
 
 @pytest.fixture
@@ -74,3 +78,84 @@ def test_concurrent_refresh_attempts(mock_post, event, hubspot_token):
             get_valid_hubspot_token(event)
 
         mock_sfu.assert_called_once()
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.services.requests.get")
+def test_get_hubspot_properties_success_and_cache(mock_get, event, hubspot_token):
+    from django.core.cache import cache
+
+    cache.clear()
+
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.json.return_value = {
+        "results": [
+            {"name": "firstname", "label": "First Name", "type": "string"},
+            {"name": "age", "label": "Age", "type": "number"},
+            {"name": "createdate", "label": "Create Date", "type": "datetime"},
+            {"name": "is_active", "label": "Is Active", "type": "bool"},
+        ]
+    }
+    mock_get.return_value = mock_response
+
+    with scope(organizer=event.organizer):
+        properties = get_hubspot_properties(event, "contact")
+
+    assert len(properties) == 4
+    assert properties[0] == {
+        "key": "firstname",
+        "label": "First Name",
+        "data_type": "text",
+    }
+    assert properties[1] == {"key": "age", "label": "Age", "data_type": "number"}
+    assert properties[2] == {
+        "key": "createdate",
+        "label": "Create Date",
+        "data_type": "date",
+    }
+    assert properties[3] == {
+        "key": "is_active",
+        "label": "Is Active",
+        "data_type": "yes/no",
+    }
+
+    mock_get.assert_called_once()
+
+    # Second call should use cache and not hit API
+    with scope(organizer=event.organizer):
+        properties2 = get_hubspot_properties(event, "contact")
+
+    assert properties == properties2
+    mock_get.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_get_hubspot_properties_no_token(event):
+    from django.core.cache import cache
+
+    cache.clear()
+
+    with scope(organizer=event.organizer):
+        with pytest.raises(
+            HubSpotFetchError, match="Not connected to HubSpot or token is invalid"
+        ):
+            get_hubspot_properties(event, "contact")
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.services.requests.get")
+def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token):
+    from django.core.cache import cache
+
+    cache.clear()
+
+    import requests
+
+    mock_get.side_effect = requests.RequestException("API error")
+
+    with scope(organizer=event.organizer):
+        with pytest.raises(
+            HubSpotFetchError, match="Failed to fetch properties from HubSpot"
+        ):
+            get_hubspot_properties(event, "contact")
