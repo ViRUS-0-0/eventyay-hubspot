@@ -211,7 +211,7 @@ class EventHubSpotCallbackView(View):
             except requests.RequestException:
                 pass
 
-        with scope(event=event):
+        with scope(organizer=event.organizer):
             HubSpotOAuthToken.objects.update_or_create(
                 event=event,
                 defaults={
