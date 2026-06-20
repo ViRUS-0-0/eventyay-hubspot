@@ -6,6 +6,7 @@ from .models import (
     HubSpotFieldMapping,
     HubSpotObjectMapping,
     HubSpotOAuthToken,
+    ObjectTypeMapping,
     SyncLog,
 )
 
@@ -131,3 +132,16 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ObjectTypeMapping)
+class ObjectTypeMappingAdmin(admin.ModelAdmin):
+    list_display = (
+        "event",
+        "eventyay_object_type",
+        "hubspot_object_type",
+        "created_at",
+    )
+    list_filter = ("event__organizer", "eventyay_object_type", "hubspot_object_type")
+    search_fields = ("event__name",)
+    readonly_fields = ("created_at", "updated_at")

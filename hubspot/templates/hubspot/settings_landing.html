@@ -1,5 +1,10 @@
 {% extends "pretixcontrol/event/base.html" %}
-{% load i18n %}
+{% load i18n static %}
+
+{% block custom_header %}
+    <link rel="stylesheet" type="text/css" href="{% static "hubspot/css/settings_landing.css" %}">
+    <script type="text/javascript" src="{% static "hubspot/js/settings_landing.js" %}"></script>
+{% endblock %}
 
 {% block title %}{% translate "HubSpot Integration" %} :: {% endblock %}
 
@@ -34,4 +39,92 @@
             {% endif %}
         </div>
     </div>
+
+    {% if is_connected %}
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% translate "Object mappings" %}</h3>
+        </div>
+        <div class="panel-body">
+            <p>{% translate "Set up object mappings below so that the system automatically creates or updates HubSpot objects." %}</p>
+            <p class="text-muted">
+                {% translate 'Depending on whether you select "orders" or "order positions" as the "eventyay object type", one HubSpot object is created for each order or one for each order item. The selection under "HubSpot object type" determines into which type of HubSpot object the data is stored.' %}
+            </p>
+
+            <form method="post" id="mapping-form">
+                {% csrf_token %}
+                {{ formset.management_form }}
+
+                {% if formset.non_form_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in formset.non_form_errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div id="mapping-rows">
+                    <div class="row mapping-row-header">
+                        <div class="col-md-4"><strong>{% translate "eventyay object type" %}</strong></div>
+                        <div class="col-md-4"><strong>{% translate "HubSpot object type" %}</strong></div>
+                        <div class="col-md-4"></div>
+                    </div>
+                    {% for form in formset %}
+                    <div class="mapping-row {% if form.instance.pk %}" data-id="{{ form.instance.pk }}{% endif %}">
+                        {{ form.id }}
+                        {{ form.position }}
+                        <div class="row">
+                            <div class="col-md-4">
+                                {{ form.eventyay_object_type }}
+                                {% if form.eventyay_object_type.errors %}
+                                    <span class="text-danger">{{ form.eventyay_object_type.errors.0 }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.hubspot_object_type }}
+                                {% if form.hubspot_object_type.errors %}
+                                    <span class="text-danger">{{ form.hubspot_object_type.errors.0 }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-default btn-edit-mapping" title="{% translate 'Edit mapping' %}">
+                                        <i class="fa fa-pencil"></i> {% translate "Edit mapping" %}
+                                    </button>
+                                    <button type="button" class="btn btn-default btn-move-up" title="{% translate 'Move up' %}">
+                                        <i class="fa fa-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-default btn-move-down" title="{% translate 'Move down' %}">
+                                        <i class="fa fa-arrow-down"></i>
+                                    </button>
+                                    <span class="hidden-element">{{ form.DELETE }}</span>
+                                    <button type="button" class="btn btn-danger btn-delete-mapping" title="{% translate 'Delete' %}">
+                                        <i class="fa fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" class="btn btn-default btn-sm add-mapping-btn" id="add-mapping">
+                    <i class="fa fa-plus"></i> {% translate "Add mapping" %}
+                </button>
+
+                <p class="text-muted mapping-info-text">
+                    <i class="fa fa-info-circle"></i>
+                    {% translate "Multiple object mappings will be evaluated in order. Associations can reference all objects created earlier on." %}
+                </p>
+
+                <div class="text-right mapping-submit-group">
+                    <button type="submit" class="btn btn-primary">
+                        {% translate "Save" %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% endif %}
 {% endblock %}
