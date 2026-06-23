@@ -1,7 +1,7 @@
 import datetime
 import os
 import uuid
-
+import logging
 import requests
 from django.db import transaction
 from django.utils.timezone import now
@@ -36,8 +36,6 @@ def get_hubspot_properties(event, object_type: str) -> list[dict]:
         event=event, object_type=object_type, is_complete=True
     ).first()
 
-    import os
-
     try:
         ttl_minutes = int(os.environ.get("HUBSPOT_PROPERTY_SYNC_TTL_MINUTES", "10"))
     except ValueError:
@@ -50,7 +48,6 @@ def get_hubspot_properties(event, object_type: str) -> list[dict]:
         try:
             sync_hubspot_properties(event, object_type)
         except Exception as e:
-            import logging
 
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to sync HubSpot properties: {e}")
