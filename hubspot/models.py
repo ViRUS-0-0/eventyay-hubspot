@@ -185,3 +185,40 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.action} by {self.organizer} at {self.created_at}"
+
+
+class HubSpotProperty(models.Model):
+    event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
+    object_type = models.CharField(max_length=50)  # "contact" or "deal"
+    key = models.CharField(max_length=190)  # HubSpot internal name
+    label = models.CharField(max_length=500)  # Human-readable label
+    data_type = models.CharField(max_length=20)  # "text", "number", "date", "yes/no"
+    sync_batch = models.UUIDField()  # Groups rows from the same sync run
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("event", "object_type", "key")
+        verbose_name = "HubSpot Property"
+        verbose_name_plural = "HubSpot Properties"
+
+    def __str__(self):
+        return f"{self.object_type} property '{self.key}' for {self.event.name}"
+
+
+class HubSpotPropertySyncState(models.Model):
+    event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="event__organizer")
+    object_type = models.CharField(max_length=50)
+    sync_batch = models.UUIDField()
+    next_cursor = models.CharField(max_length=500, blank=True, default="")
+    is_complete = models.BooleanField(default=False)
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("event", "object_type")
+        verbose_name = "HubSpot Property Sync State"
+
+    def __str__(self):
+        return f"Sync state for {self.event.name} ({self.object_type})"

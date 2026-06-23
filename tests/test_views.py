@@ -75,10 +75,17 @@ def test_hubspot_disconnect_view_connected(
     mock_response.ok = True
     mock_delete.return_value = mock_response
 
-    from django.core.cache import cache
+    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
+    import uuid
 
-    cache.set(f"hubspot_properties_{event.id}_contact", [{"key": "test"}])
-    cache.set(f"hubspot_properties_{event.id}_deal", [{"key": "test"}])
+    with scope(organizer=event.organizer):
+        batch = uuid.uuid4()
+        HubSpotProperty.objects.create(
+            event=event, object_type="contact", key="test", sync_batch=batch
+        )
+        HubSpotPropertySyncState.objects.create(
+            event=event, object_type="contact", sync_batch=batch
+        )
 
     url = reverse(
         "plugins:hubspot:disconnect",
@@ -94,9 +101,8 @@ def test_hubspot_disconnect_view_connected(
 
     with scope(organizer=event.organizer):
         assert not HubSpotOAuthToken.objects.filter(event=event).exists()
-
-    assert cache.get(f"hubspot_properties_{event.id}_contact") is None
-    assert cache.get(f"hubspot_properties_{event.id}_deal") is None
+        assert not HubSpotProperty.objects.filter(event=event).exists()
+        assert not HubSpotPropertySyncState.objects.filter(event=event).exists()
 
 
 @pytest.mark.django_db

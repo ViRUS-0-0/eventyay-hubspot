@@ -1,8 +1,8 @@
 import datetime
 import os
+import uuid
 
 import requests
-from django.core.cache import cache
 from django.db import transaction
 from django.utils.timezone import now
 from django_scopes import scope
@@ -11,6 +11,8 @@ from .models import (
     AuditAction,
     AuditLog,
     HubSpotOAuthToken,
+    HubSpotProperty,
+    HubSpotPropertySyncState,
     SyncAction,
     SyncDirection,
     SyncLog,
@@ -26,59 +28,118 @@ class HubSpotFetchError(Exception):
 
 def get_hubspot_properties(event, object_type: str) -> list[dict]:
     """
-    Fetches and caches all properties for a given HubSpot object type (contact or deal).
-    Returns a list of dictionaries with 'key', 'label', and 'data_type'.
+    Returns synced HubSpot properties from the DB.
+    If no complete sync exists, or if it is stale (older than 10 mins),
+    triggers a chunk-wise sync first.
     """
-    cache_key = f"hubspot_properties_{event.id}_{object_type}"
-    cached_props = cache.get(cache_key)
-    if cached_props is not None:
-        return cached_props
+    sync_state = HubSpotPropertySyncState.objects.filter(
+        event=event, object_type=object_type, is_complete=True
+    ).first()
 
+    import os
+
+    try:
+        ttl_minutes = int(os.environ.get("HUBSPOT_PROPERTY_SYNC_TTL_MINUTES", "10"))
+    except ValueError:
+        ttl_minutes = 10
+
+    if not sync_state or (
+        sync_state.completed_at
+        and sync_state.completed_at < now() - datetime.timedelta(minutes=ttl_minutes)
+    ):
+        sync_hubspot_properties(event, object_type)
+
+    return list(
+        HubSpotProperty.objects.filter(event=event, object_type=object_type).values(
+            "key", "label", "data_type"
+        )
+    )
+
+
+def sync_hubspot_properties(event, object_type: str):
+    """
+    Fetches properties from HubSpot page by page, persisting each chunk to the DB.
+    Resumes from the last cursor if a previous sync was interrupted.
+    """
     token = get_valid_hubspot_token(event)
     if not token:
         raise HubSpotFetchError("Not connected to HubSpot or token is invalid.")
 
-    url = f"https://api.hubapi.com/crm/v3/properties/{object_type}"
+    sync_state, created = HubSpotPropertySyncState.objects.get_or_create(
+        event=event,
+        object_type=object_type,
+        defaults={"sync_batch": uuid.uuid4()},
+    )
+
+    if sync_state.is_complete:
+        sync_state.sync_batch = uuid.uuid4()
+        sync_state.next_cursor = ""
+        sync_state.is_complete = False
+        sync_state.completed_at = None
+        sync_state.save()
+
+    batch_id = sync_state.sync_batch
+    cursor = sync_state.next_cursor
+    base_url = f"https://api.hubapi.com/crm/v3/properties/{object_type}"
     headers = {"Authorization": f"Bearer {token}"}
 
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        raise HubSpotFetchError(f"Failed to fetch properties from HubSpot: {str(e)}")
+    while True:
+        params = {}
+        if cursor:
+            params["after"] = cursor
 
-    data = response.json()
-    results = data.get("results", [])
+        try:
+            response = requests.get(
+                base_url, headers=headers, params=params, timeout=15
+            )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            raise HubSpotFetchError(f"Failed to fetch properties from HubSpot: {e}")
 
-    properties = []
-    for prop in results:
-        # HubSpot's API returns internal/hidden properties by default.
-        # We skip them to match the 210 visible properties in the HubSpot UI.
-        if prop.get("hidden"):
-            continue
+        data = response.json()
+        results = data.get("results", [])
 
-        hubspot_type = prop.get("type", "string")
+        for prop in results:
+            if prop.get("hidden"):
+                continue
+            HubSpotProperty.objects.update_or_create(
+                event=event,
+                object_type=object_type,
+                key=prop.get("name"),
+                defaults={
+                    "label": prop.get("label", ""),
+                    "data_type": _map_hubspot_type(prop.get("type", "string")),
+                    "sync_batch": batch_id,
+                },
+            )
 
-        # Map HubSpot types to eventyay field types ("text", "number", "date", "yes/no")
-        if hubspot_type == "number":
-            data_type = "number"
-        elif hubspot_type in ("date", "datetime"):
-            data_type = "date"
-        elif hubspot_type == "bool":
-            data_type = "yes/no"
+        paging = data.get("paging", {})
+        next_page = paging.get("next", {})
+        cursor = next_page.get("after", "")
+
+        if cursor:
+            sync_state.next_cursor = cursor
+            sync_state.save(update_fields=["next_cursor"])
         else:
-            data_type = "text"
+            HubSpotProperty.objects.filter(
+                event=event, object_type=object_type
+            ).exclude(sync_batch=batch_id).delete()
 
-        properties.append(
-            {
-                "key": prop.get("name"),
-                "label": prop.get("label"),
-                "data_type": data_type,
-            }
-        )
+            sync_state.is_complete = True
+            sync_state.completed_at = now()
+            sync_state.next_cursor = ""
+            sync_state.save()
+            break
 
-    cache.set(cache_key, properties, timeout=3600)
-    return properties
+
+def _map_hubspot_type(hubspot_type: str) -> str:
+    if hubspot_type == "number":
+        return "number"
+    elif hubspot_type in ("date", "datetime"):
+        return "date"
+    elif hubspot_type == "bool":
+        return "yes/no"
+    return "text"
 
 
 def get_valid_hubspot_token(event) -> str | None:

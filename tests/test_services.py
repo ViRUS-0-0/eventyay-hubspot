@@ -82,22 +82,32 @@ def test_concurrent_refresh_attempts(mock_post, event, hubspot_token):
 
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_success_and_cache(mock_get, event, hubspot_token):
-    from django.core.cache import cache
+def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_token):
+    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
 
-    cache.clear()
+    with scope(organizer=event.organizer):
+        HubSpotProperty.objects.all().delete()
+        HubSpotPropertySyncState.objects.all().delete()
 
-    mock_response = mock.Mock()
-    mock_response.ok = True
-    mock_response.json.return_value = {
+    mock_response_1 = mock.Mock()
+    mock_response_1.ok = True
+    mock_response_1.json.return_value = {
         "results": [
             {"name": "firstname", "label": "First Name", "type": "string"},
             {"name": "age", "label": "Age", "type": "number"},
+        ],
+        "paging": {"next": {"after": "page2"}},
+    }
+
+    mock_response_2 = mock.Mock()
+    mock_response_2.ok = True
+    mock_response_2.json.return_value = {
+        "results": [
             {"name": "createdate", "label": "Create Date", "type": "datetime"},
             {"name": "is_active", "label": "Is Active", "type": "bool"},
         ]
     }
-    mock_get.return_value = mock_response
+    mock_get.side_effect = [mock_response_1, mock_response_2]
 
     with scope(organizer=event.organizer):
         properties = get_hubspot_properties(event, "contact")
@@ -120,21 +130,23 @@ def test_get_hubspot_properties_success_and_cache(mock_get, event, hubspot_token
         "data_type": "yes/no",
     }
 
-    mock_get.assert_called_once()
+    assert mock_get.call_count == 2
 
-    # Second call should use cache and not hit API
+    # Second call should use DB and not hit API
     with scope(organizer=event.organizer):
         properties2 = get_hubspot_properties(event, "contact")
 
     assert properties == properties2
-    mock_get.assert_called_once()
+    assert mock_get.call_count == 2
 
 
 @pytest.mark.django_db
 def test_get_hubspot_properties_no_token(event):
-    from django.core.cache import cache
+    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
 
-    cache.clear()
+    with scope(organizer=event.organizer):
+        HubSpotProperty.objects.all().delete()
+        HubSpotPropertySyncState.objects.all().delete()
 
     with scope(organizer=event.organizer):
         with pytest.raises(
@@ -146,9 +158,11 @@ def test_get_hubspot_properties_no_token(event):
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
 def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token):
-    from django.core.cache import cache
+    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
 
-    cache.clear()
+    with scope(organizer=event.organizer):
+        HubSpotProperty.objects.all().delete()
+        HubSpotPropertySyncState.objects.all().delete()
 
     import requests
 
@@ -159,3 +173,44 @@ def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token):
             HubSpotFetchError, match="Failed to fetch properties from HubSpot"
         ):
             get_hubspot_properties(event, "contact")
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.services.requests.get")
+def test_sync_resumes_after_crash(mock_get, event, hubspot_token):
+    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
+    import uuid
+
+    with scope(organizer=event.organizer):
+        HubSpotProperty.objects.all().delete()
+        HubSpotPropertySyncState.objects.all().delete()
+
+    # Simulate an interrupted sync with cursor="page3"
+    with scope(organizer=event.organizer):
+        HubSpotPropertySyncState.objects.create(
+            event=event,
+            object_type="contact",
+            sync_batch=uuid.uuid4(),
+            next_cursor="page3",
+            is_complete=False,
+        )
+
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.json.return_value = {
+        "results": [
+            {"name": "new_prop", "label": "New", "type": "string"},
+        ]
+    }
+    mock_get.return_value = mock_response
+
+    with scope(organizer=event.organizer):
+        properties = get_hubspot_properties(event, "contact")
+
+    assert len(properties) == 1
+    assert properties[0] == {"key": "new_prop", "label": "New", "data_type": "text"}
+
+    # Assert that the API was called with the cursor "page3"
+    mock_get.assert_called_once()
+    args, kwargs = mock_get.call_args
+    assert kwargs["params"] == {"after": "page3"}
