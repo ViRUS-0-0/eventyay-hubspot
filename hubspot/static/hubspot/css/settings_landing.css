@@ -1,0 +1,27 @@
+.mapping-row-header {
+    margin-bottom: 5px;
+}
+
+.mapping-row {
+    margin-bottom: 8px;
+}
+
+.mapping-row-hidden {
+    display: none;
+}
+
+.hidden-element {
+    display: none;
+}
+
+.add-mapping-btn {
+    margin-top: 5px;
+}
+
+.mapping-info-text {
+    margin-top: 10px;
+}
+
+.mapping-submit-group {
+    margin-top: 15px;
+}

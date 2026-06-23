@@ -16,10 +16,12 @@ from eventyay.base.models import Event
 
 from eventyay.control.permissions import EventPermissionRequiredMixin
 
+from .forms import ObjectTypeMappingFormSet
 from .models import (
     AuditAction,
     AuditLog,
     HubSpotOAuthToken,
+    ObjectTypeMapping,
     HubSpotProperty,
     HubSpotPropertySyncState,
     SyncAction,
@@ -48,6 +50,13 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
     template_name = "hubspot/settings_landing.html"
     permission = "can_change_event_settings"
 
+    def _get_formset(self, data=None):
+        return ObjectTypeMappingFormSet(
+            data,
+            instance=self.request.event,
+            queryset=ObjectTypeMapping.objects.filter(event=self.request.event),
+        )
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         try:
@@ -57,7 +66,17 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
             context["hub_id"] = token.hub_id
         except HubSpotOAuthToken.DoesNotExist:
             context["is_connected"] = False
+        if "formset" not in context:
+            context["formset"] = self._get_formset()
         return context
+
+    def post(self, request, *args, **kwargs):
+        formset = self._get_formset(request.POST)
+        if formset.is_valid():
+            formset.save()
+            messages.success(request, _("Object mappings saved."))
+            return redirect(request.path)
+        return self.render_to_response(self.get_context_data(formset=formset))
 
 
 class EventHubSpotConnectView(EventPermissionRequiredMixin, View):
@@ -194,7 +213,7 @@ class EventHubSpotCallbackView(View):
             except requests.RequestException:
                 pass
 
-        with scope(event=event):
+        with scope(organizer=event.organizer):
             HubSpotOAuthToken.objects.update_or_create(
                 event=event,
                 defaults={
