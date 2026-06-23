@@ -47,7 +47,13 @@ def get_hubspot_properties(event, object_type: str) -> list[dict]:
         sync_state.completed_at
         and sync_state.completed_at < now() - datetime.timedelta(minutes=ttl_minutes)
     ):
-        sync_hubspot_properties(event, object_type)
+        try:
+            sync_hubspot_properties(event, object_type)
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to sync HubSpot properties: {e}")
 
     return list(
         HubSpotProperty.objects.filter(event=event, object_type=object_type).values(
