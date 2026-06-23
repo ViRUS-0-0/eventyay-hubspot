@@ -1,14 +1,21 @@
 from django.utils.translation import gettext_lazy as _
+from eventyay.base.models import Question
 
 QUESTION_TYPE_MAP = {
-    "N": "number",
-    "B": "yes/no",
-    "D": "date",
-    "W": "date",
-    "H": "date",
-    "M": "text",
-    "C": "text",
-    # "F" intentionally omitted — file uploads are not syncable
+    Question.TYPE_NUMBER: "number",
+    Question.TYPE_BOOLEAN: "yes/no",
+    Question.TYPE_DATE: "date",
+    Question.TYPE_DATETIME: "date",
+    Question.TYPE_TIME: "date",
+    Question.TYPE_CHOICE_MULTIPLE: "text",
+    Question.TYPE_CHOICE: "text",
+    Question.TYPE_STRING: "text",
+    Question.TYPE_TEXT: "text",
+    Question.TYPE_CHOICE_DROPDOWN: "text",
+    Question.TYPE_COUNTRYCODE: "text",
+    Question.TYPE_PHONENUMBER: "text",
+    Question.TYPE_DESCRIPTION: "text",
+    # Question.TYPE_FILE intentionally omitted — file uploads are not syncable
 }
 
 
@@ -216,7 +223,7 @@ def get_available_fields(object_type: str, event=None) -> list[dict]:
 
         questions = event.questions.filter(active=True)
         for q in questions:
-            if q.type == "F":
+            if q.type == Question.TYPE_FILE:
                 continue
 
             data_type = QUESTION_TYPE_MAP.get(q.type, "text")
