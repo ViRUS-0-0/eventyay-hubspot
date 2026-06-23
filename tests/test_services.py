@@ -9,7 +9,6 @@ from hubspot.models import HubSpotOAuthToken
 from hubspot.services import (
     get_valid_hubspot_token,
     get_hubspot_properties,
-    HubSpotFetchError,
 )
 
 
@@ -141,7 +140,7 @@ def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_to
 
 
 @pytest.mark.django_db
-def test_get_hubspot_properties_no_token(event):
+def test_get_hubspot_properties_no_token(event, caplog):
     from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
 
     with scope(organizer=event.organizer):
@@ -149,15 +148,15 @@ def test_get_hubspot_properties_no_token(event):
         HubSpotPropertySyncState.objects.all().delete()
 
     with scope(organizer=event.organizer):
-        with pytest.raises(
-            HubSpotFetchError, match="Not connected to HubSpot or token is invalid"
-        ):
-            get_hubspot_properties(event, "contact")
+        properties = get_hubspot_properties(event, "contact")
+
+    assert properties == []
+    assert "Not connected to HubSpot or token is invalid" in caplog.text
 
 
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token):
+def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token, caplog):
     from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
 
     with scope(organizer=event.organizer):
@@ -169,10 +168,10 @@ def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token):
     mock_get.side_effect = requests.RequestException("API error")
 
     with scope(organizer=event.organizer):
-        with pytest.raises(
-            HubSpotFetchError, match="Failed to fetch properties from HubSpot"
-        ):
-            get_hubspot_properties(event, "contact")
+        properties = get_hubspot_properties(event, "contact")
+
+    assert properties == []
+    assert "Failed to fetch properties from HubSpot" in caplog.text
 
 
 @pytest.mark.django_db
