@@ -82,6 +82,24 @@ def get_available_fields(object_type: str, event=None) -> list[dict]:
                 "label": _("Invoice country"),
                 "data_type": "text",
             },
+            {
+                "key": "invoice_state",
+                "label": _("Invoice state"),
+                "data_type": "text",
+            },
+            {
+                "key": "invoice_vat_id",
+                "label": _("Invoice VAT ID"),
+                "data_type": "text",
+            },
+            {
+                "key": "invoice_is_business",
+                "label": _("Invoice is business"),
+                "data_type": "yes/no",
+            },
+            {"key": "phone", "label": _("Order phone"), "data_type": "text"},
+            {"key": "comment", "label": _("Order comment"), "data_type": "text"},
+            {"key": "testmode", "label": _("Is test mode"), "data_type": "yes/no"},
             # Event information
             {"key": "event_slug", "label": _("Event short form"), "data_type": "text"},
             {"key": "event_name", "label": _("Event name"), "data_type": "text"},
@@ -127,6 +145,11 @@ def get_available_fields(object_type: str, event=None) -> list[dict]:
                 "label": _("Company"),
                 "data_type": "text",
             },  # Extract via: position.company
+            {
+                "key": "job_title",
+                "label": _("Job title"),
+                "data_type": "text",
+            },  # Extract via: position.job_title
             {
                 "key": "street",
                 "label": _("Street"),
@@ -219,6 +242,57 @@ def get_available_fields(object_type: str, event=None) -> list[dict]:
                 "label": _("Order locale"),
                 "data_type": "text",
             },  # Extract via: position.order.locale
+            {
+                "key": "order_phone",
+                "label": _("Order phone"),
+                "data_type": "text",
+            },  # Extract via: position.order.phone
+            {
+                "key": "order_comment",
+                "label": _("Order comment"),
+                "data_type": "text",
+            },  # Extract via: position.order.comment
+            # Invoice fields via order relationship
+            {
+                "key": "invoice_name",
+                "label": _("Invoice address name"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.name
+            {
+                "key": "invoice_company",
+                "label": _("Invoice address company"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.company
+            {
+                "key": "invoice_street",
+                "label": _("Invoice street"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.street
+            {
+                "key": "invoice_zip",
+                "label": _("Invoice zip code"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.zipcode
+            {
+                "key": "invoice_city",
+                "label": _("Invoice city"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.city
+            {
+                "key": "invoice_country",
+                "label": _("Invoice country"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.country
+            {
+                "key": "invoice_state",
+                "label": _("Invoice state"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.state
+            {
+                "key": "invoice_vat_id",
+                "label": _("Invoice VAT ID"),
+                "data_type": "text",
+            },  # Extract via: position.order.invoice_address.vat_id
         ]
 
         questions = event.questions.filter(active=True)
