@@ -113,8 +113,8 @@ def test_get_available_fields_order_position_with_event(event):
 
         fields = get_available_fields("order_position", event=event)
 
-    # Should have 34 base fields + 5 active questions (N, B, D, S, M)
-    assert len(fields) == 39
+    # Should have 38 base fields + 5 active questions (N, B, D, S, M)
+    assert len(fields) == 43
 
     keys = [f["key"] for f in fields]
     assert "attendee_name" in keys
