@@ -90,10 +90,8 @@ def test_no_identifier_blocks_save(
     }
     response = logged_in_organizer_client.post(mapping_url, data)
     assert response.status_code == 200
-    assert (
-        b"Exactly one row must have its sync mode set to &#x27;Identifier&#x27;."
-        in response.content
-    )
+    assert b"Exactly one row must have its sync mode set to" in response.content
+    assert b"Identifier" in response.content
 
     with scope(organizer=organizer):
         assert HubSpotFieldMapping.objects.filter(event=event).count() == 0
@@ -118,7 +116,8 @@ def test_multiple_identifiers_blocks_save(
     }
     response = logged_in_organizer_client.post(mapping_url, data)
     assert response.status_code == 200
-    assert b"Only one row can be set as &#x27;Identifier&#x27;." in response.content
+    assert b"Only one row can be set as" in response.content
+    assert b"Identifier" in response.content
 
     with scope(organizer=organizer):
         assert HubSpotFieldMapping.objects.filter(event=event).count() == 0

@@ -180,7 +180,9 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             is_identifier = True
 
         if is_identifier:
-            form.fields["sync_mode"].choices = [(SyncMode.IDENTIFIER, _("Identifier"))]
+            form.fields["sync_mode"].widget.choices = [
+                (SyncMode.IDENTIFIER, _("Identifier"))
+            ]
             form.fields["sync_mode"].widget.attrs["readonly"] = True
             form.fields["sync_mode"].widget.attrs[
                 "style"
@@ -193,7 +195,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
                 for c in form.fields["sync_mode"].choices
                 if c[0] != SyncMode.IDENTIFIER
             ]
-            form.fields["sync_mode"].choices = choices
+            form.fields["sync_mode"].widget.choices = choices
             if form.initial.get("sync_mode") == SyncMode.IDENTIFIER:
                 form.initial["sync_mode"] = SyncMode.OVERWRITE
 
