@@ -60,6 +60,20 @@ def test_get_available_fields_order_position_no_event():
 
 
 @pytest.mark.django_db
+def test_get_available_fields_order_position_empty_event(event):
+    # Event without any questions defined
+    from django_scopes import scope
+
+    with scope(organizer=event.organizer):
+        fields = get_available_fields("order_position", event=event)
+
+    # Base fields are 38, and no question fields are appended
+    assert len(fields) == 38
+    question_fields = [f for f in fields if f["key"].startswith("question_")]
+    assert len(question_fields) == 0
+
+
+@pytest.mark.django_db
 def test_get_available_fields_order_position_with_event(event):
     from django_scopes import scope
 
