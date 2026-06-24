@@ -140,6 +140,48 @@ def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_to
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.services.requests.get")
+def test_get_hubspot_properties_ttl_expiry(mock_get, event, hubspot_token):
+    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
+    import datetime
+    from django.utils.timezone import now
+
+    with scope(organizer=event.organizer):
+        HubSpotProperty.objects.all().delete()
+        HubSpotPropertySyncState.objects.all().delete()
+
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.json.return_value = {
+        "results": [
+            {"name": "firstname", "label": "First Name", "type": "string"},
+        ]
+    }
+    mock_get.return_value = mock_response
+
+    with scope(organizer=event.organizer):
+        properties = get_hubspot_properties(event, "contact")
+
+    assert len(properties) == 1
+    assert mock_get.call_count == 1
+
+    # Simulate TTL expiry
+    with scope(organizer=event.organizer):
+        sync_state = HubSpotPropertySyncState.objects.get(
+            event=event, object_type="contact"
+        )
+        sync_state.completed_at = now() - datetime.timedelta(minutes=15)
+        sync_state.save()
+
+    # Second call should hit API again
+    with scope(organizer=event.organizer):
+        properties2 = get_hubspot_properties(event, "contact")
+
+    assert len(properties2) == 1
+    assert mock_get.call_count == 2
+
+
+@pytest.mark.django_db
 def test_get_hubspot_properties_no_token(event, caplog):
     from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
 
