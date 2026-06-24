@@ -26,11 +26,13 @@ class HubSpotFetchError(Exception):
     pass
 
 
-def get_hubspot_properties(event, object_type: str) -> list[dict]:
+def get_hubspot_properties(
+    event, object_type: str, force_sync: bool = False
+) -> list[dict]:
     """
     Returns synced HubSpot properties from the DB.
-    If no complete sync exists, or if it is stale (older than 10 mins),
-    triggers a chunk-wise sync first.
+    If no complete sync exists, or if it is stale (older than 10 mins) or force_sync is True,
+    triggers a chunk-wise sync first. Retries up to 3 times back-to-back if fetching fails.
     """
     sync_state = HubSpotPropertySyncState.objects.filter(
         event=event, object_type=object_type, is_complete=True
@@ -41,16 +43,35 @@ def get_hubspot_properties(event, object_type: str) -> list[dict]:
     except ValueError:
         ttl_minutes = 10
 
-    if not sync_state or (
-        sync_state.completed_at
-        and sync_state.completed_at < now() - datetime.timedelta(minutes=ttl_minutes)
+    if (
+        force_sync
+        or not sync_state
+        or (
+            sync_state.completed_at
+            and sync_state.completed_at
+            < now() - datetime.timedelta(minutes=ttl_minutes)
+        )
     ):
-        try:
-            sync_hubspot_properties(event, object_type)
-        except Exception as e:
+        max_attempts = 3
+        last_error = None
+        for attempt in range(max_attempts):
+            try:
+                sync_hubspot_properties(event, object_type)
+                last_error = None
+                break
+            except Exception as e:
+                last_error = e
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to sync HubSpot properties (attempt {attempt + 1}): {e}"
+                )
 
+        if last_error:
             logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to sync HubSpot properties: {e}")
+            logger.error(
+                f"Failed to fetch properties from HubSpot after {max_attempts} attempts: {last_error}"
+            )
+            raise last_error
 
     return list(
         HubSpotProperty.objects.filter(event=event, object_type=object_type).values(
@@ -96,8 +117,10 @@ def sync_hubspot_properties(event, object_type: str):
                 base_url, headers=headers, params=params, timeout=15
             )
             response.raise_for_status()
-        except requests.RequestException as e:
-            raise HubSpotFetchError(f"Failed to fetch properties from HubSpot: {e}")
+        except requests.RequestException:
+            raise HubSpotFetchError(
+                "Could not connect to HubSpot API. Please check your connection and try again."
+            )
 
         data = response.json()
         results = data.get("results", [])

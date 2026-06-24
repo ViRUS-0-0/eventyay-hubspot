@@ -189,10 +189,12 @@ def test_get_hubspot_properties_no_token(event, caplog):
         HubSpotProperty.objects.all().delete()
         HubSpotPropertySyncState.objects.all().delete()
 
-    with scope(organizer=event.organizer):
-        properties = get_hubspot_properties(event, "contact")
+    from hubspot.services import HubSpotFetchError
 
-    assert properties == []
+    with scope(organizer=event.organizer):
+        with pytest.raises(HubSpotFetchError):
+            get_hubspot_properties(event, "contact")
+
     assert "Not connected to HubSpot or token is invalid" in caplog.text
 
 
@@ -210,9 +212,8 @@ def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token, capl
     mock_get.side_effect = requests.RequestException("API error")
 
     with scope(organizer=event.organizer):
-        properties = get_hubspot_properties(event, "contact")
-
-    assert properties == []
+        with pytest.raises(Exception):
+            get_hubspot_properties(event, "contact")
     assert "Failed to fetch properties from HubSpot" in caplog.text
 
 

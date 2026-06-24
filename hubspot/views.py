@@ -12,14 +12,22 @@ from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
 from django_scopes import scope
-from eventyay.base.models import Event
+from eventyay.base.models import Event, Order, OrderPosition
 
 from eventyay.control.permissions import EventPermissionRequiredMixin
 
-from .forms import ObjectTypeMappingFormSet
+from django.contrib.contenttypes.models import ContentType
+from django.forms import modelformset_factory
+
+from .forms import (
+    BaseHubSpotFieldMappingFormSet,
+    HubSpotFieldMappingForm,
+    ObjectTypeMappingFormSet,
+)
 from .models import (
     AuditAction,
     AuditLog,
+    HubSpotFieldMapping,
     HubSpotOAuthToken,
     ObjectTypeMapping,
     HubSpotProperty,
@@ -29,6 +37,8 @@ from .models import (
     SyncLog,
     SyncStatus,
 )
+from .field_discovery import get_available_fields
+from .services import get_hubspot_properties
 
 
 def get_client_ip(request):
@@ -312,3 +322,137 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)
+
+
+class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
+    """View to manage field mapping rows for a specific object mapping type."""
+
+    template_name = "hubspot/field_mapping.html"
+    permission = "can_change_event_settings"
+
+    def _get_formset_kwargs(self, mapping_id, request):
+        try:
+            mapping = ObjectTypeMapping.objects.get(pk=mapping_id, event=request.event)
+        except ObjectTypeMapping.DoesNotExist:
+            raise PermissionDenied(_("Invalid object mapping."))
+
+        if mapping.eventyay_object_type == "order":
+            content_type = ContentType.objects.get_for_model(Order)
+        elif mapping.eventyay_object_type == "order_position":
+            content_type = ContentType.objects.get_for_model(OrderPosition)
+        else:
+            raise PermissionDenied(_("Unsupported eventyay object type."))
+
+        hubspot_object_type = mapping.hubspot_object_type
+
+        queryset = HubSpotFieldMapping.objects.filter(
+            event=request.event,
+            content_type=content_type,
+            hubspot_object_type=hubspot_object_type,
+        )
+
+        FormSet = modelformset_factory(
+            HubSpotFieldMapping,
+            form=HubSpotFieldMappingForm,
+            formset=BaseHubSpotFieldMappingFormSet,
+            extra=1 if not queryset.exists() else 0,
+            can_delete=True,
+        )
+
+        eventyay_fields = get_available_fields(
+            mapping.eventyay_object_type, event=request.event
+        )
+        force_sync = request.GET.get("force_sync") == "1"
+        sync_error = None
+        try:
+            hubspot_properties = get_hubspot_properties(
+                request.event, mapping.hubspot_object_type, force_sync=force_sync
+            )
+        except Exception as e:
+            sync_error = str(e)
+            hubspot_properties = list(
+                HubSpotProperty.objects.filter(
+                    event=request.event, object_type=mapping.hubspot_object_type
+                ).values("key", "label", "data_type")
+            )
+
+        form_kwargs = {
+            "eventyay_fields": eventyay_fields,
+            "hubspot_properties": hubspot_properties,
+        }
+
+        return {
+            "FormSet": FormSet,
+            "queryset": queryset,
+            "form_kwargs": form_kwargs,
+            "content_type": content_type,
+            "hubspot_object_type": hubspot_object_type,
+            "mapping": mapping,
+            "sync_error": sync_error,
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        mapping_id = self.kwargs.get("mapping_id")
+
+        setup = self._get_formset_kwargs(mapping_id, self.request)
+
+        context["content_type"] = setup["content_type"]
+        context["hubspot_object_type"] = setup["hubspot_object_type"]
+        context["mapping"] = setup["mapping"]
+        context["sync_error"] = setup.get("sync_error")
+
+        if "formset" not in context:
+            context["formset"] = setup["FormSet"](
+                queryset=setup["queryset"], form_kwargs=setup["form_kwargs"]
+            )
+
+        context["has_rows"] = HubSpotFieldMapping.objects.filter(
+            event=self.request.event,
+            content_type=setup["content_type"],
+            hubspot_object_type=setup["hubspot_object_type"],
+        ).exists()
+
+        return context
+
+    def post(self, request, *args, **kwargs):
+        mapping_id = self.kwargs.get("mapping_id")
+        setup = self._get_formset_kwargs(mapping_id, request)
+
+        formset = setup["FormSet"](
+            request.POST, queryset=setup["queryset"], form_kwargs=setup["form_kwargs"]
+        )
+
+        if formset.is_valid():
+            instances = formset.save(commit=False)
+
+            for instance in instances:
+                instance.event = request.event
+                instance.content_type = setup["content_type"]
+                instance.hubspot_object_type = setup["hubspot_object_type"]
+                instance.save()
+
+            for obj in formset.deleted_objects:
+                obj.delete()
+
+            messages.success(
+                request, _("Field mapping configuration saved successfully.")
+            )
+            return redirect(
+                reverse(
+                    "plugins:hubspot:mapping_fields",
+                    kwargs={
+                        "organizer": request.event.organizer.slug,
+                        "event": request.event.slug,
+                        "mapping_id": mapping_id,
+                    },
+                )
+            )
+        else:
+            messages.error(
+                request,
+                _(
+                    "There were errors saving your configuration. Please check the form."
+                ),
+            )
+            return self.render_to_response(self.get_context_data(formset=formset))

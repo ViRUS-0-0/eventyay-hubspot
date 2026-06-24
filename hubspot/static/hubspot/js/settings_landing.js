@@ -71,6 +71,7 @@ document.addEventListener("DOMContentLoaded", function() {
         var editBtn = document.createElement('button');
         editBtn.type = 'button';
         editBtn.className = 'btn btn-default btn-edit-mapping';
+        editBtn.disabled = true;
         editBtn.innerHTML = '<i class="fa fa-pencil"></i> ' + (typeof gettext !== 'undefined' ? gettext("Edit mapping") : 'Edit mapping');
 
         var upBtn = document.createElement('button');
