@@ -22,6 +22,8 @@ from .models import (
     AuditLog,
     HubSpotOAuthToken,
     ObjectTypeMapping,
+    HubSpotProperty,
+    HubSpotPropertySyncState,
     SyncAction,
     SyncDirection,
     SyncLog,
@@ -303,6 +305,10 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
                 action=AuditAction.DISCONNECT,
                 ip_address=get_client_ip(request),
             )
+
+        # Clear synced HubSpot properties
+        HubSpotProperty.objects.filter(event=request.event).delete()
+        HubSpotPropertySyncState.objects.filter(event=request.event).delete()
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)
