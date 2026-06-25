@@ -183,14 +183,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
         elif index == 0 and not self.initial_form_count():
             # Auto-mark slot 0 as the identifier only when there are no saved
             # rows at all, so we don't produce a second locked-identifier slot.
-            has_saved_identifier = any(
-                f.instance
-                and f.instance.pk
-                and f.instance.sync_mode == SyncMode.IDENTIFIER
-                for f in self.initial_forms
-            )
-            if not has_saved_identifier:
-                is_identifier = True
+            is_identifier = True
 
         if is_identifier:
             form.fields["sync_mode"].widget.choices = [

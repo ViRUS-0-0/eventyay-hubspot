@@ -5,6 +5,27 @@ from django.urls import reverse
 from eventyay.base.models import Order
 from hubspot.models import HubSpotFieldMapping, SyncMode, ObjectTypeMapping
 from django_scopes import scopes_disabled, scope
+from unittest.mock import patch
+
+
+@pytest.fixture(autouse=True)
+def mock_hubspot_properties():
+    with patch("hubspot.views.get_hubspot_properties") as mock_get:
+        mock_get.return_value = [
+            {
+                "key": "dealname",
+                "label": "Deal Name",
+                "data_type": "text",
+                "category": "Deal",
+            },
+            {
+                "key": "amount",
+                "label": "Amount",
+                "data_type": "number",
+                "category": "Deal",
+            },
+        ]
+        yield mock_get
 
 
 @pytest.fixture
@@ -128,11 +149,11 @@ def test_incompatible_types_warning_but_saves(
     logged_in_organizer_client, mapping_url, organizer, event, settings
 ):
     settings.SITE_URL = "https://testserver"
-    # Mapping a boolean (is_paid) to a string (dealname)
+    # Mapping a boolean (testmode) to a string (dealname)
     data = {
         "form-TOTAL_FORMS": "1",
         "form-INITIAL_FORMS": "0",
-        "form-0-eventyay_field": "is_paid",
+        "form-0-eventyay_field": "testmode",
         "form-0-hubspot_property": "dealname",
         "form-0-sync_mode": SyncMode.IDENTIFIER,
         "form-0-is_active": "on",
