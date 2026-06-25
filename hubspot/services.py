@@ -1,5 +1,6 @@
 import datetime
 import os
+import time
 import uuid
 import logging
 import requests
@@ -31,8 +32,8 @@ def get_hubspot_properties(
 ) -> list[dict]:
     """
     Returns synced HubSpot properties from the DB.
-    If no complete sync exists, or if it is stale (older than 10 mins) or force_sync is True,
-    triggers a chunk-wise sync first. Retries up to 3 times back-to-back if fetching fails.
+    If no complete sync exists, is stale (older than TTL) or force_sync is True,
+    triggers a chunk-wise sync first. Retries up to 4 times with 30 s / 60 s / 120 s delays.
     """
     sync_state = HubSpotPropertySyncState.objects.filter(
         event=event, object_type=object_type, is_complete=True
@@ -52,22 +53,24 @@ def get_hubspot_properties(
             < now() - datetime.timedelta(minutes=ttl_minutes)
         )
     ):
-        max_attempts = 3
+        backoffs = [30, 60, 120]
+        max_attempts = len(backoffs) + 1
         last_error = None
+        logger = logging.getLogger(__name__)
         for attempt in range(max_attempts):
             try:
                 sync_hubspot_properties(event, object_type)
                 last_error = None
                 break
-            except Exception as e:
+            except HubSpotFetchError as e:
                 last_error = e
-                logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to sync HubSpot properties (attempt {attempt + 1}): {e}"
                 )
+                if attempt < len(backoffs):
+                    time.sleep(backoffs[attempt])
 
         if last_error:
-            logger = logging.getLogger(__name__)
             logger.error(
                 f"Failed to fetch properties from HubSpot after {max_attempts} attempts: {last_error}"
             )
@@ -100,7 +103,9 @@ def sync_hubspot_properties(event, object_type: str):
         sync_state.next_cursor = ""
         sync_state.is_complete = False
         sync_state.completed_at = None
-        sync_state.save()
+        sync_state.save(
+            update_fields=["sync_batch", "next_cursor", "is_complete", "completed_at"]
+        )
 
     batch_id = sync_state.sync_batch
     cursor = sync_state.next_cursor
@@ -158,14 +163,16 @@ def sync_hubspot_properties(event, object_type: str):
             break
 
 
+_HUBSPOT_TYPE_MAP = {
+    "number": "number",
+    "date": "date",
+    "datetime": "date",
+    "bool": "yes/no",
+}
+
+
 def _map_hubspot_type(hubspot_type: str) -> str:
-    if hubspot_type == "number":
-        return "number"
-    elif hubspot_type in ("date", "datetime"):
-        return "date"
-    elif hubspot_type == "bool":
-        return "yes/no"
-    return "text"
+    return _HUBSPOT_TYPE_MAP.get(hubspot_type, "text")
 
 
 def get_valid_hubspot_token(event) -> str | None:
@@ -187,16 +194,35 @@ def get_valid_hubspot_token(event) -> str | None:
             return token.access_token
 
         # Token is expired or expiring soon, refresh it
-        response = requests.post(
-            "https://api.hubapi.com/oauth/v1/token",
-            data={
-                "grant_type": "refresh_token",
-                "client_id": os.environ.get("HUBSPOT_CLIENT_ID", ""),
-                "client_secret": os.environ.get("HUBSPOT_CLIENT_SECRET", ""),
-                "refresh_token": token.refresh_token,
-            },
-            timeout=15,
-        )
+        logger = logging.getLogger(__name__)
+        try:
+            response = requests.post(
+                "https://api.hubapi.com/oauth/v1/token",
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": os.environ.get("HUBSPOT_CLIENT_ID", ""),
+                    "client_secret": os.environ.get("HUBSPOT_CLIENT_SECRET", ""),
+                    "refresh_token": token.refresh_token,
+                },
+                timeout=15,
+            )
+        except requests.RequestException as e:
+            logger.error(
+                "Network error refreshing HubSpot token for event %s: %s", event.slug, e
+            )
+            AuditLog.objects.create(
+                organizer=event.organizer,
+                event=event,
+                action=AuditAction.REFRESH_FAILED,
+            )
+            SyncLog.objects.create(
+                event=event,
+                action=SyncAction.REFRESH_FAILED,
+                direction=SyncDirection.PUSH,
+                status=SyncStatus.FAILED,
+                detail={"error": str(e)},
+            )
+            return None
 
         if not response.ok:
             # Refresh failed. Log and return None.

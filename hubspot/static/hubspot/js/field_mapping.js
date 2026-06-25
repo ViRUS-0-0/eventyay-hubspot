@@ -2,9 +2,9 @@ document.addEventListener('DOMContentLoaded', function() {
     var addButton = document.getElementById('add-form-row');
     var tableBody = document.getElementById('field-mapping-formset');
     var templateObj = document.getElementById('empty-form-template');
-    
+
     if (!addButton || !tableBody || !templateObj) return;
-    
+
     var template = templateObj.innerHTML;
     var prefix = tableBody.getAttribute('data-formset-prefix');
     var totalFormsInput = document.getElementById('id_' + prefix + '-TOTAL_FORMS');
@@ -13,13 +13,13 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         var formCount = parseInt(totalFormsInput.value);
         var newRowHtml = template.replace(/__prefix__/g, formCount);
-        
+
         // Add the new row
         var tempDiv = document.createElement('tbody');
         tempDiv.innerHTML = newRowHtml;
         var newRow = tempDiv.firstElementChild;
         tableBody.appendChild(newRow);
-        
+
         // Update total forms count
         totalFormsInput.value = formCount + 1;
 
@@ -50,14 +50,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     deleteInput.checked = true;
                     row.style.display = 'none';
                 } else {
-                    // Unsaved new row — safe to remove from DOM entirely
-                    row.parentNode.removeChild(row);
-                    // Decrement TOTAL_FORMS so Django ignores this slot
-                    var prefix = tableBody.getAttribute('data-formset-prefix');
-                    var totalFormsInput = document.getElementById('id_' + prefix + '-TOTAL_FORMS');
-                    if (totalFormsInput) {
-                        totalFormsInput.value = parseInt(totalFormsInput.value) - 1;
-                    }
+                    // Unsaved new row — hide it and blank its required fields so
+                    // Django treats this slot as an empty ignored form. Do NOT
+                    // decrement TOTAL_FORMS; Django uses form indices, not count,
+                    // to locate forms, so removing a mid-list index breaks later ones.
+                    row.style.display = 'none';
+                    row.querySelectorAll('select, input[type="text"]').forEach(function(el) {
+                        el.value = '';
+                    });
                 }
             });
         }

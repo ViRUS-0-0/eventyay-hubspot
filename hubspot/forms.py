@@ -69,29 +69,28 @@ class HubSpotFieldMappingForm(forms.ModelForm):
     def _calculate_warnings(self, eventyay_field, hubspot_property):
         warnings = []
         if eventyay_field and hubspot_property:
-            ey_lower = eventyay_field.lower()
-            hs_lower = hubspot_property.lower()
+            ey_type = getattr(self, "ey_types", {}).get(eventyay_field)
+            hs_type = getattr(self, "hs_types", {}).get(hubspot_property)
 
-            # Heuristic 1: Boolean mapped to non-boolean
-            ey_is_bool = any(x in ey_lower for x in ["is_", "has_", "allow_"])
-            hs_is_bool = any(x in hs_lower for x in ["is_", "has_", "allow_"])
-
-            # Heuristic 2: ID or number mapped to string
-            ey_is_num = "id" in ey_lower or "count" in ey_lower
-            hs_is_num = "id" in hs_lower or "count" in hs_lower
-
-            if (ey_is_bool and not hs_is_bool) or (not ey_is_bool and hs_is_bool):
-                warnings.append(
-                    _(
-                        "Warning: Possible type mismatch. Mapping a yes/no field to a different type."
+            if ey_type and hs_type:
+                if ey_type == "yes/no" and hs_type != "yes/no":
+                    warnings.append(
+                        _(
+                            "Warning: Possible type mismatch. Mapping a yes/no field to a different type."
+                        )
                     )
-                )
-            elif (ey_is_num and not hs_is_num) or (not ey_is_num and hs_is_num):
-                warnings.append(
-                    _(
-                        "Warning: Possible type mismatch. Mapping a number field to a different type."
+                elif ey_type != "yes/no" and hs_type == "yes/no":
+                    warnings.append(
+                        _(
+                            "Warning: Possible type mismatch. Mapping a non-boolean field to a yes/no field."
+                        )
                     )
-                )
+                elif ey_type == "number" and hs_type not in ("number", "text"):
+                    warnings.append(
+                        _(
+                            "Warning: Possible type mismatch. Mapping a number field to a different type."
+                        )
+                    )
         return warnings
 
     def _build_choices(self, fields_list):
@@ -128,6 +127,11 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         hubspot_properties = kwargs.pop("hubspot_properties", [])
         super().__init__(*args, **kwargs)
         self.warnings = []
+
+        self.ey_types = {f["key"]: f.get("data_type", "text") for f in eventyay_fields}
+        self.hs_types = {
+            f["key"]: f.get("data_type", "text") for f in hubspot_properties
+        }
 
         ey_choices = self._build_choices(eventyay_fields)
         hs_choices = self._build_choices(hubspot_properties)
@@ -176,8 +180,17 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             and form.instance.sync_mode == SyncMode.IDENTIFIER
         ):
             is_identifier = True
-        elif not self.initial_form_count() and index == 0:
-            is_identifier = True
+        elif index == 0 and not self.initial_form_count():
+            # Auto-mark slot 0 as the identifier only when there are no saved
+            # rows at all, so we don't produce a second locked-identifier slot.
+            has_saved_identifier = any(
+                f.instance
+                and f.instance.pk
+                and f.instance.sync_mode == SyncMode.IDENTIFIER
+                for f in self.initial_forms
+            )
+            if not has_saved_identifier:
+                is_identifier = True
 
         if is_identifier:
             form.fields["sync_mode"].widget.choices = [

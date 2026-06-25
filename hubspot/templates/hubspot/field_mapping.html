@@ -3,7 +3,7 @@
 {% load bootstrap3 %}
 
 {% block custom_header %}
-    <script type="text/javascript" src="{% static "hubspot/js/field_mapping.js" %}"></script>
+    <script type="text/javascript" src="{% static "hubspot/js/field_mapping.js" %}" defer></script>
 {% endblock %}
 
 {% block title %}{% translate "Field Mapping" %} :: {% endblock %}
@@ -89,7 +89,7 @@
                             {{ form.is_active }}
                         </td>
                         <td class="text-center" style="vertical-align: middle;">
-                            {% if form.initial.sync_mode != 'identifier' %}
+                            {% if not form.instance.pk or form.instance.sync_mode != 'identifier' %}
                                 <button type="button" class="btn btn-danger btn-sm remove-form-row">
                                     <i class="fa fa-trash"></i>
                                 </button>
