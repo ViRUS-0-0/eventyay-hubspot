@@ -153,3 +153,31 @@ def create_record(event, object_type: str, properties: dict) -> str:
     _raise_for_status(response)
 
     return str(response.json()["id"])
+
+
+def get_record(event, object_type: str, record_id: str, properties: list) -> dict:
+    """
+    Fetches an existing HubSpot record to get its properties.
+    Raises HubSpotTransientError or HubSpotPermanentError on failure.
+    Returns the record's properties dict.
+    """
+    token = get_valid_hubspot_token(event)
+    if not token:
+        raise HubSpotPermanentError("Not connected to HubSpot or token is invalid.")
+
+    url = f"https://api.hubapi.com/crm/v3/objects/{object_type}/{record_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"properties": ",".join(properties)} if properties else {}
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+    except requests.exceptions.Timeout as e:
+        raise HubSpotTransientError(f"Request to HubSpot timed out: {e}")
+    except requests.exceptions.ConnectionError as e:
+        raise HubSpotTransientError(f"Connection to HubSpot failed: {e}")
+    except requests.exceptions.RequestException as e:
+        raise HubSpotTransientError(f"Request to HubSpot failed: {e}")
+
+    _raise_for_status(response)
+    data = response.json()
+    return data.get("properties", {})
