@@ -32,6 +32,14 @@ class HubSpotPermanentError(HubSpotAPIError):
     pass
 
 
+class HubSpotRecordNotFoundError(HubSpotPermanentError):
+    """404 Not Found — record was deleted in HubSpot."""
+
+    """4xx (except 409) — do not retry."""
+
+    pass
+
+
 def _raise_for_status(response: requests.Response) -> None:
     """Raise HubSpotTransientError or HubSpotPermanentError based on status code."""
     if response.ok:
@@ -63,6 +71,12 @@ def _raise_for_status(response: requests.Response) -> None:
             retry_after_seconds=retry_after_seconds,
         )
 
+    if status_code == 404:
+        raise HubSpotRecordNotFoundError(
+            message=message,
+            status_code=status_code,
+            response_body=response_body,
+        )
     raise HubSpotPermanentError(
         message=message,
         status_code=status_code,
