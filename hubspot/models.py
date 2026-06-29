@@ -176,9 +176,6 @@ class AuditLog(models.Model):
         "base.Event", null=True, blank=True, on_delete=models.SET_NULL
     )
     action = models.CharField(max_length=20, choices=AuditAction.choices)
-    user = models.ForeignKey(
-        "base.User", null=True, blank=True, on_delete=models.SET_NULL
-    )
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     objects = ScopedManager(organizer="organizer")

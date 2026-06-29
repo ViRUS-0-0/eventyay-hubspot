@@ -84,7 +84,6 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
                 event=request.event,
                 action=AuditAction.MAPPING_UPDATED,
                 ip_address=get_client_ip(request),
-                user=request.user,
             )
             messages.success(request, _("Object mappings saved."))
             return redirect(request.path)
@@ -255,7 +254,6 @@ class EventHubSpotCallbackView(View):
                 event=event,
                 action=AuditAction.CONNECT,
                 ip_address=get_client_ip(request),
-                user=request.user,
             )
 
         messages.success(request, _("Successfully connected to HubSpot."))
@@ -313,7 +311,6 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
                 event=request.event,
                 action=AuditAction.DISCONNECT,
                 ip_address=get_client_ip(request),
-                user=request.user,
             )
 
         # Clear synced HubSpot properties

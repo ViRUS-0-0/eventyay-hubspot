@@ -48,7 +48,6 @@
                         <thead>
                             <tr>
                                 <th>{% translate "Time" %}</th>
-                                <th>{% translate "User" %}</th>
                                 <th>{% translate "Action" %}</th>
                                 <th>{% translate "Log Type" %}</th>
                             </tr>
@@ -57,7 +56,6 @@
                             {% for activity in activities %}
                                 <tr>
                                     <td class="text-muted"><small>{{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}</small></td>
-                                    <td>{{ activity.user }}</td>
                                     <td>{{ activity.text }}</td>
                                     <td>{{ activity.type|title }}</td>
                                 </tr>

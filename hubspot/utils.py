@@ -55,7 +55,7 @@ def get_hubspot_activity_logs(event, filter_type=None):
                     "text": text,
                     "type": type_,
                     "id": f"audit_{log.id}",
-                    "user": log.user.get_full_name() if log.user else "System",
+                    "user": "System",
                     "raw": log,
                 }
             )
@@ -80,11 +80,36 @@ def get_hubspot_activity_logs(event, filter_type=None):
             ]:
                 continue
 
-            obj_name = (
-                log.object_mapping.content_type.name.title()
-                if (log.object_mapping and log.object_mapping.content_type)
-                else "Object"
-            )
+            obj_name = "Object"
+            if log.object_mapping:
+                if log.object_mapping.content_object:
+                    obj = log.object_mapping.content_object
+                    content_type_name = log.object_mapping.content_type.name.title()
+                    model_name = log.object_mapping.content_type.model
+                    if model_name == "orderposition" and hasattr(obj, "order"):
+                        attendee_info = getattr(
+                            obj, "attendee_name_cached", None
+                        ) or getattr(obj, "attendee_email", None)
+                        if not attendee_info and hasattr(obj.order, "email"):
+                            attendee_info = obj.order.email
+                        order_info = (
+                            f" for Order {obj.order.code}"
+                            if hasattr(obj.order, "code")
+                            else ""
+                        )
+                        info_str = f" ({attendee_info})" if attendee_info else ""
+                        obj_name = f"{content_type_name} {obj}{order_info}{info_str}"
+                    elif model_name == "order" and hasattr(obj, "code"):
+                        email_str = (
+                            f" ({obj.email})"
+                            if hasattr(obj, "email") and obj.email
+                            else ""
+                        )
+                        obj_name = f"{content_type_name} {obj.code}{email_str}"
+                    else:
+                        obj_name = f"{content_type_name} {obj}"
+                elif log.object_mapping.content_type:
+                    obj_name = log.object_mapping.content_type.name.title()
 
             message_template = SYNC_STATUS_MESSAGES.get(
                 log.status, _("%(obj_name)s sync is pending")
