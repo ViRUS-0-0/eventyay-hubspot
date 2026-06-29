@@ -213,6 +213,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             return
 
         identifier_count = 0
+        seen_fields = set()
         for form in self.forms:
             if self.can_delete and self._should_delete_form(form):
                 continue
@@ -220,6 +221,18 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             sync_mode = form.cleaned_data.get("sync_mode")
             if sync_mode == SyncMode.IDENTIFIER:
                 identifier_count += 1
+
+            eventyay_field = form.cleaned_data.get("eventyay_field")
+            if eventyay_field:
+                if eventyay_field in seen_fields:
+                    raise forms.ValidationError(
+                        _(
+                            "You cannot map the same eventyay field ('%(field)s') multiple times."
+                        ),
+                        params={"field": eventyay_field},
+                        code="duplicate_field",
+                    )
+                seen_fields.add(eventyay_field)
 
         if identifier_count == 0:
             raise forms.ValidationError(

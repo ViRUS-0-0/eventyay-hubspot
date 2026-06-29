@@ -483,12 +483,6 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
                 )
             )
         else:
-            messages.error(
-                request,
-                _(
-                    "There were errors saving your configuration. Please check the form."
-                ),
-            )
             return self.render_to_response(
                 self.get_context_data(setup=setup, formset=formset)
             )
