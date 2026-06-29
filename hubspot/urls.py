@@ -4,6 +4,7 @@ from hubspot.views import (
     EventHubSpotConnectView,
     EventHubSpotDisconnectView,
     EventHubSpotSettingsView,
+    EventHubSpotLogView,
 )
 
 urlpatterns = [
@@ -26,5 +27,10 @@ urlpatterns = [
         "control/hubspot/callback/",
         EventHubSpotCallbackView.as_view(),
         name="callback",
+    ),
+    path(
+        "control/event/<orgslug:organizer>/<slug:event>/hubspot/logs/",
+        EventHubSpotLogView.as_view(),
+        name="logs",
     ),
 ]

@@ -1,0 +1,74 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n static %}
+
+{% block title %}{% translate "HubSpot Activity Log" %} :: {% endblock %}
+
+{% block custom_header %}
+<script src="{% static 'hubspot/js/logs.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+    <h1>
+        <a href="{% url 'plugins:hubspot:hubspot' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-link btn-lg">
+            <i class="fa fa-arrow-left"></i>
+        </a>
+        {% translate "HubSpot Activity Log" %}
+    </h1>
+
+    <div class="row" style="margin-bottom: 20px;">
+        <div class="col-md-12">
+            <div class="dropdown" id="filterDropdownContainer"
+                data-all-activity="{% translate 'All activity' %}"
+                data-sync-activity="{% translate 'Sync activity' %}"
+                data-settings-changes="{% translate 'Settings changes' %}">
+                <button class="btn btn-default dropdown-toggle" type="button" id="filterDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">
+                    {% if filter_type == 'sync' %}
+                        {% translate "Sync activity" %}
+                    {% elif filter_type == 'settings' %}
+                        {% translate "Settings changes" %}
+                    {% else %}
+                        {% translate "All activity" %}
+                    {% endif %}
+                    <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="filterDropdown">
+                    <li><a href="?">{% translate "All activity" %}</a></li>
+                    <li><a href="?type=sync">{% translate "Sync activity" %}</a></li>
+                    <li><a href="?type=settings">{% translate "Settings changes" %}</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel panel-default">
+        <div class="panel-body" id="logs-container">
+            {% if activities %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead>
+                            <tr>
+                                <th>{% translate "Time" %}</th>
+                                <th>{% translate "User" %}</th>
+                                <th>{% translate "Action" %}</th>
+                                <th>{% translate "Log Type" %}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for activity in activities %}
+                                <tr>
+                                    <td class="text-muted"><small>{{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}</small></td>
+                                    <td>{{ activity.user }}</td>
+                                    <td>{{ activity.text }}</td>
+                                    <td>{{ activity.type|title }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% include "pretixcontrol/pagination.html" %}
+            {% else %}
+                <p class="text-muted">{% translate "No activity found for this filter." %}</p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
