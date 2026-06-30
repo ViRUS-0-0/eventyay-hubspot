@@ -3,6 +3,7 @@ import os
 import secrets
 import urllib.parse
 
+import logging
 import requests
 from django.contrib import messages
 from django.shortcuts import redirect
@@ -12,14 +13,22 @@ from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
 from django_scopes import scope
-from eventyay.base.models import Event
+from eventyay.base.models import Event, Order, OrderPosition
 
 from eventyay.control.permissions import EventPermissionRequiredMixin
 
-from .forms import ObjectTypeMappingFormSet
+from django.contrib.contenttypes.models import ContentType
+from django.forms import modelformset_factory
+
+from .forms import (
+    BaseHubSpotFieldMappingFormSet,
+    HubSpotFieldMappingForm,
+    ObjectTypeMappingFormSet,
+)
 from .models import (
     AuditAction,
     AuditLog,
+    HubSpotFieldMapping,
     HubSpotOAuthToken,
     ObjectTypeMapping,
     HubSpotProperty,
@@ -29,6 +38,8 @@ from .models import (
     SyncLog,
     SyncStatus,
 )
+from .field_discovery import get_available_fields
+from .services import get_hubspot_properties, sync_hubspot_properties
 
 
 def get_client_ip(request):
@@ -36,12 +47,6 @@ def get_client_ip(request):
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
-
-
-# Environment variables are loaded dynamically in the views
-
-
-# Environment variables are loaded dynamically in the views
 
 
 class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
@@ -277,15 +282,11 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
             )
             response = requests.delete(revoke_url, timeout=10)
             if not response.ok:
-                import logging
-
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to revoke HubSpot token: {response.status_code} {response.text}"
                 )
         except requests.RequestException as e:
-            import logging
-
             logger = logging.getLogger(__name__)
             logger.warning(f"Error reaching HubSpot revoke endpoint: {e}")
 
@@ -312,3 +313,176 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)
+
+
+class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
+    """View to manage field mapping rows for a specific object mapping type."""
+
+    template_name = "hubspot/field_mapping.html"
+    permission = "can_change_event_settings"
+
+    def _get_formset_kwargs(self, mapping_id, request):
+        try:
+            mapping = ObjectTypeMapping.objects.get(pk=mapping_id, event=request.event)
+        except ObjectTypeMapping.DoesNotExist:
+            raise PermissionDenied(_("Invalid object mapping."))
+
+        if mapping.eventyay_object_type == "order":
+            content_type = ContentType.objects.get_for_model(Order)
+        elif mapping.eventyay_object_type == "order_position":
+            content_type = ContentType.objects.get_for_model(OrderPosition)
+        else:
+            raise PermissionDenied(_("Unsupported eventyay object type."))
+
+        hubspot_object_type = mapping.hubspot_object_type
+
+        queryset = HubSpotFieldMapping.objects.filter(
+            event=request.event,
+            content_type=content_type,
+            hubspot_object_type=hubspot_object_type,
+        )
+
+        FormSet = modelformset_factory(
+            HubSpotFieldMapping,
+            form=HubSpotFieldMappingForm,
+            formset=BaseHubSpotFieldMappingFormSet,
+            extra=1 if not queryset.exists() else 0,
+            can_delete=True,
+        )
+
+        eventyay_fields = get_available_fields(
+            mapping.eventyay_object_type, event=request.event
+        )
+        sync_error = None
+        try:
+            hubspot_properties = get_hubspot_properties(
+                request.event, mapping.hubspot_object_type
+            )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "Failed to load HubSpot properties for event %s: %s",
+                request.event.slug,
+                e,
+            )
+            sync_error = _(
+                "Could not retrieve HubSpot properties. "
+                "Please check your connection and try again."
+            )
+            hubspot_properties = list(
+                HubSpotProperty.objects.filter(
+                    event=request.event, object_type=mapping.hubspot_object_type
+                ).values("key", "label", "data_type")
+            )
+
+        form_kwargs = {
+            "eventyay_fields": eventyay_fields,
+            "hubspot_properties": hubspot_properties,
+        }
+
+        return {
+            "FormSet": FormSet,
+            "queryset": queryset,
+            "form_kwargs": form_kwargs,
+            "content_type": content_type,
+            "hubspot_object_type": hubspot_object_type,
+            "mapping": mapping,
+            "sync_error": sync_error,
+        }
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("force_sync") == "1":
+            mapping_id = self.kwargs.get("mapping_id")
+            try:
+                mapping = ObjectTypeMapping.objects.get(
+                    pk=mapping_id, event=request.event
+                )
+            except ObjectTypeMapping.DoesNotExist:
+                raise PermissionDenied(_("Invalid object mapping."))
+
+            try:
+                sync_hubspot_properties(request.event, mapping.hubspot_object_type)
+                messages.success(request, _("HubSpot properties synced successfully."))
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    "Manual force_sync failed for event %s: %s", request.event.slug, e
+                )
+                messages.error(
+                    request,
+                    _(
+                        "Could not sync HubSpot properties. "
+                        "Please check your connection and try again."
+                    ),
+                )
+
+            clean_url = reverse(
+                "plugins:hubspot:mapping_fields",
+                kwargs={
+                    "organizer": request.event.organizer.slug,
+                    "event": request.event.slug,
+                    "mapping_id": mapping_id,
+                },
+            )
+            return redirect(clean_url)
+
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, setup=None, **kwargs):
+        context = super().get_context_data(**kwargs)
+        mapping_id = self.kwargs.get("mapping_id")
+
+        if setup is None:
+            setup = self._get_formset_kwargs(mapping_id, self.request)
+
+        context["content_type"] = setup["content_type"]
+        context["hubspot_object_type"] = setup["hubspot_object_type"]
+        context["mapping"] = setup["mapping"]
+        context["sync_error"] = setup.get("sync_error")
+
+        if "formset" not in context:
+            context["formset"] = setup["FormSet"](
+                queryset=setup["queryset"], form_kwargs=setup["form_kwargs"]
+            )
+
+        context["has_rows"] = setup["queryset"].exists()
+
+        return context
+
+    def post(self, request, *args, **kwargs):
+        mapping_id = self.kwargs.get("mapping_id")
+        setup = self._get_formset_kwargs(mapping_id, request)
+
+        formset = setup["FormSet"](
+            request.POST, queryset=setup["queryset"], form_kwargs=setup["form_kwargs"]
+        )
+
+        if formset.is_valid():
+            instances = formset.save(commit=False)
+
+            for instance in instances:
+                instance.event = request.event
+                instance.content_type = setup["content_type"]
+                instance.hubspot_object_type = setup["hubspot_object_type"]
+                instance.save()
+
+            for obj in formset.deleted_objects:
+                obj.delete()
+
+            messages.success(
+                request, _("Field mapping configuration saved successfully.")
+            )
+            return redirect(
+                reverse(
+                    "plugins:hubspot:mapping_fields",
+                    kwargs={
+                        "organizer": request.event.organizer.slug,
+                        "event": request.event.slug,
+                        "mapping_id": mapping_id,
+                    },
+                )
+            )
+        else:
+            return self.render_to_response(
+                self.get_context_data(setup=setup, formset=formset)
+            )

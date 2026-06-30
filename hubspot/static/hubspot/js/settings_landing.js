@@ -71,6 +71,7 @@ document.addEventListener("DOMContentLoaded", function() {
         var editBtn = document.createElement('button');
         editBtn.type = 'button';
         editBtn.className = 'btn btn-default btn-edit-mapping';
+        editBtn.disabled = true;
         editBtn.innerHTML = '<i class="fa fa-pencil"></i> ' + (typeof gettext !== 'undefined' ? gettext("Edit mapping") : 'Edit mapping');
 
         var upBtn = document.createElement('button');
@@ -119,19 +120,25 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!row) return;
 
         if (target.classList.contains('btn-delete-mapping')) {
-            // Visually hide the row
-            row.classList.add('mapping-row-hidden');
-
-            // Check the Django DELETE checkbox if it exists
             var deleteInput = row.querySelector('input[name$="-DELETE"]');
-            if (deleteInput) {
-                deleteInput.checked = true;
-                deleteInput.value = 'on';
-            }
+            var idInput = row.querySelector('input[name$="-id"]');
+            var isSaved = idInput && idInput.value !== '';
 
-            // Clear the selects so Django treats extra forms as empty/ignored
-            var selects = row.querySelectorAll('select');
-            selects.forEach(function(s) { s.value = ''; });
+            if (isSaved) {
+                // Existing saved row: mark for deletion and hide visually.
+                row.classList.add('mapping-row-hidden');
+                if (deleteInput) {
+                    deleteInput.checked = true;
+                    deleteInput.value = 'on';
+                }
+            } else {
+                // Unsaved new row: hide and clear values. Do NOT decrement TOTAL_FORMS,
+                // otherwise remaining form indices won't match and data can be dropped.
+                row.classList.add('mapping-row-hidden');
+                row.querySelectorAll('select').forEach(function(s) {
+                    s.value = '';
+                });
+            }
 
         } else if (target.classList.contains('btn-move-up')) {
             var prev = row.previousElementSibling;
@@ -152,6 +159,10 @@ document.addEventListener("DOMContentLoaded", function() {
             var rows = container.querySelectorAll('.mapping-row');
             var pos = 0;
             rows.forEach(function(row) {
+                // Skip hidden/deleted rows — they should not receive a position.
+                if (row.classList.contains('mapping-row-hidden')) {
+                    return;
+                }
                 var posInput = row.querySelector('.mapping-position');
                 if (posInput) {
                     posInput.value = pos++;

@@ -70,7 +70,7 @@
                         <div class="col-md-4"></div>
                     </div>
                     {% for form in formset %}
-                    <div class="mapping-row {% if form.instance.pk %}" data-id="{{ form.instance.pk }}{% endif %}">
+                    <div class="mapping-row"{% if form.instance.pk %} data-id="{{ form.instance.pk }}"{% endif %}>
                         {{ form.id }}
                         {{ form.position }}
                         <div class="row">
@@ -88,9 +88,15 @@
                             </div>
                             <div class="col-md-4">
                                 <div class="btn-group" role="group">
-                                    <button type="button" class="btn btn-default btn-edit-mapping" title="{% translate 'Edit mapping' %}">
-                                        <i class="fa fa-pencil"></i> {% translate "Edit mapping" %}
-                                    </button>
+                                    {% if form.instance.pk %}
+                                        <a href="{% url 'plugins:hubspot:mapping_fields' organizer=request.event.organizer.slug event=request.event.slug mapping_id=form.instance.pk %}" class="btn btn-default btn-edit-mapping" title="{% translate 'Edit mapping' %}">
+                                            <i class="fa fa-pencil"></i> {% translate "Edit mapping" %}
+                                        </a>
+                                    {% else %}
+                                        <button type="button" class="btn btn-default btn-edit-mapping" title="{% translate 'Save mapping first to edit fields' %}" disabled>
+                                            <i class="fa fa-pencil"></i> {% translate "Edit mapping" %}
+                                        </button>
+                                    {% endif %}
                                     <button type="button" class="btn btn-default btn-move-up" title="{% translate 'Move up' %}">
                                         <i class="fa fa-arrow-up"></i>
                                     </button>
