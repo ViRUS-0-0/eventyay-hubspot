@@ -132,13 +132,12 @@ document.addEventListener("DOMContentLoaded", function() {
                     deleteInput.value = 'on';
                 }
             } else {
-                // Unsaved new row: remove from DOM and decrement TOTAL_FORMS
-                // so Django ignores this slot entirely.
-                row.parentNode.removeChild(row);
-                var currentTotal = parseInt(totalFormsInput.value, 10);
-                if (currentTotal > 0) {
-                    totalFormsInput.value = currentTotal - 1;
-                }
+                // Unsaved new row: hide and clear values. Do NOT decrement TOTAL_FORMS,
+                // otherwise remaining form indices won't match and data can be dropped.
+                row.classList.add('mapping-row-hidden');
+                row.querySelectorAll('select').forEach(function(s) {
+                    s.value = '';
+                });
             }
 
         } else if (target.classList.contains('btn-move-up')) {
@@ -161,7 +160,7 @@ document.addEventListener("DOMContentLoaded", function() {
             var pos = 0;
             rows.forEach(function(row) {
                 // Skip hidden/deleted rows — they should not receive a position.
-                if (row.classList.contains('mapping-row-hidden') || row.style.display === 'none') {
+                if (row.classList.contains('mapping-row-hidden')) {
                     return;
                 }
                 var posInput = row.querySelector('.mapping-position');

@@ -1,14 +1,21 @@
 import datetime
+import uuid
+import requests
 from unittest import mock
 
 import pytest
 from django.utils.timezone import now
 from django_scopes import scope
 
-from hubspot.models import HubSpotOAuthToken
+from hubspot.models import (
+    HubSpotOAuthToken,
+    HubSpotProperty,
+    HubSpotPropertySyncState,
+)
 from hubspot.services import (
     get_valid_hubspot_token,
     get_hubspot_properties,
+    HubSpotFetchError,
 )
 
 
@@ -82,8 +89,6 @@ def test_concurrent_refresh_attempts(mock_post, event, hubspot_token):
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
 def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_token):
-    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
-
     with scope(organizer=event.organizer):
         HubSpotProperty.objects.all().delete()
         HubSpotPropertySyncState.objects.all().delete()
@@ -142,10 +147,6 @@ def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_to
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
 def test_get_hubspot_properties_ttl_expiry(mock_get, event, hubspot_token):
-    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
-    import datetime
-    from django.utils.timezone import now
-
     with scope(organizer=event.organizer):
         HubSpotProperty.objects.all().delete()
         HubSpotPropertySyncState.objects.all().delete()
@@ -183,13 +184,9 @@ def test_get_hubspot_properties_ttl_expiry(mock_get, event, hubspot_token):
 
 @pytest.mark.django_db
 def test_get_hubspot_properties_no_token(event, caplog):
-    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
-
     with scope(organizer=event.organizer):
         HubSpotProperty.objects.all().delete()
         HubSpotPropertySyncState.objects.all().delete()
-
-    from hubspot.services import HubSpotFetchError
 
     with scope(organizer=event.organizer):
         with pytest.raises(HubSpotFetchError):
@@ -201,18 +198,14 @@ def test_get_hubspot_properties_no_token(event, caplog):
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
 def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token, caplog):
-    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
-
     with scope(organizer=event.organizer):
         HubSpotProperty.objects.all().delete()
         HubSpotPropertySyncState.objects.all().delete()
 
-    import requests
-
     mock_get.side_effect = requests.RequestException("API error")
 
     with scope(organizer=event.organizer):
-        with pytest.raises(Exception):
+        with pytest.raises(HubSpotFetchError):
             get_hubspot_properties(event, "contact")
     assert "Failed to fetch properties from HubSpot" in caplog.text
 
@@ -220,9 +213,6 @@ def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token, capl
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
 def test_sync_resumes_after_crash(mock_get, event, hubspot_token):
-    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
-    import uuid
-
     with scope(organizer=event.organizer):
         HubSpotProperty.objects.all().delete()
         HubSpotPropertySyncState.objects.all().delete()

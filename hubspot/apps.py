@@ -34,6 +34,6 @@ class EventyayHubspotPluginApp(PluginConfig):
         env_path = plugin_dir / ".env"
 
         if env_hubspot_path.exists():
-            load_dotenv(dotenv_path=env_hubspot_path, override=True)
+            load_dotenv(dotenv_path=env_hubspot_path)
         elif env_path.exists():
-            load_dotenv(dotenv_path=env_path, override=True)
+            load_dotenv(dotenv_path=env_path)

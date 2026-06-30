@@ -1,6 +1,5 @@
 import datetime
 import os
-import time
 import uuid
 import logging
 import requests
@@ -53,28 +52,15 @@ def get_hubspot_properties(
             < now() - datetime.timedelta(minutes=ttl_minutes)
         )
     ):
-        backoffs = [30, 60, 120]
-        max_attempts = len(backoffs) + 1
-        last_error = None
-        logger = logging.getLogger(__name__)
-        for attempt in range(max_attempts):
-            try:
-                sync_hubspot_properties(event, object_type)
-                last_error = None
-                break
-            except HubSpotFetchError as e:
-                last_error = e
-                logger.warning(
-                    f"Failed to sync HubSpot properties (attempt {attempt + 1}): {e}"
-                )
-                if attempt < len(backoffs):
-                    time.sleep(backoffs[attempt])
-
-        if last_error:
-            logger.error(
-                f"Failed to fetch properties from HubSpot after {max_attempts} attempts: {last_error}"
-            )
-            raise last_error
+        try:
+            sync_hubspot_properties(event, object_type)
+        except HubSpotFetchError as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to fetch properties from HubSpot: {e}")
+            if not HubSpotProperty.objects.filter(
+                event=event, object_type=object_type
+            ).exists():
+                raise e
 
     return list(
         HubSpotProperty.objects.filter(event=event, object_type=object_type).values(
