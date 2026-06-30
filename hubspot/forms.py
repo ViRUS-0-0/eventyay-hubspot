@@ -1,8 +1,39 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
 from eventyay.base.models import Event
+from eventyay.control.forms.filter import FilterForm
+from eventyay.base.forms.widgets import DatePickerWidget
 
 from .models import ObjectTypeMapping
+
+
+class HubSpotLogFilterForm(FilterForm):
+    type = forms.ChoiceField(
+        label=_("Activity Type"),
+        choices=(
+            ("", _("All activity")),
+            ("sync", _("Sync activity")),
+            ("settings", _("Settings changes")),
+        ),
+        required=False,
+    )
+    query = forms.CharField(
+        label=_("Search for..."),
+        widget=forms.TextInput(
+            attrs={"placeholder": _("Search for..."), "autofocus": "autofocus"}
+        ),
+        required=False,
+    )
+    date_from = forms.DateField(
+        label=_("Date from"),
+        required=False,
+        widget=DatePickerWidget,
+    )
+    date_until = forms.DateField(
+        label=_("Date until"),
+        required=False,
+        widget=DatePickerWidget,
+    )
 
 
 class ObjectTypeMappingForm(forms.ModelForm):

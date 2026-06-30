@@ -5,6 +5,8 @@ from functools import lru_cache
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from django.utils.timezone import make_aware
+from datetime import datetime, time
 
 
 @lru_cache(maxsize=1)
@@ -23,7 +25,9 @@ def decrypt(value: str) -> str:
     return _get_fernet().decrypt(value.encode()).decode()
 
 
-def get_hubspot_activity_logs(event, filter_type=None):
+def get_hubspot_activity_logs(
+    event, filter_type=None, date_from=None, date_to=None, search_query=None
+):
     from .models import AuditLog, SyncLog
 
     activities = []
@@ -35,6 +39,14 @@ def get_hubspot_activity_logs(event, filter_type=None):
 
     if filter_type in [None, "settings"]:
         audit_logs = AuditLog.objects.filter(event=event)
+
+        if date_from:
+            dt_from = make_aware(datetime.combine(date_from, time.min))
+            audit_logs = audit_logs.filter(created_at__gte=dt_from)
+        if date_to:
+            dt_to = make_aware(datetime.combine(date_to, time.max))
+            audit_logs = audit_logs.filter(created_at__lte=dt_to)
+
         for log in audit_logs:
             if log.action in [
                 "connect",
@@ -47,6 +59,9 @@ def get_hubspot_activity_logs(event, filter_type=None):
             text, type_ = AUDIT_ACTION_MAP.get(log.action, (log.action, "settings"))
 
             if filter_type and filter_type != type_:
+                continue
+
+            if search_query and search_query.lower() not in str(text).lower():
                 continue
 
             activities.append(
@@ -64,6 +79,13 @@ def get_hubspot_activity_logs(event, filter_type=None):
         sync_logs = SyncLog.objects.filter(event=event).select_related(
             "object_mapping__content_type"
         )
+
+        if date_from:
+            dt_from = make_aware(datetime.combine(date_from, time.min))
+            sync_logs = sync_logs.filter(created_at__gte=dt_from)
+        if date_to:
+            dt_to = make_aware(datetime.combine(date_to, time.max))
+            sync_logs = sync_logs.filter(created_at__lte=dt_to)
 
         SYNC_STATUS_MESSAGES = {
             "success": _("%(obj_name)s synced to HubSpot successfully"),
@@ -115,6 +137,9 @@ def get_hubspot_activity_logs(event, filter_type=None):
                 log.status, _("%(obj_name)s sync is pending")
             )
             text = message_template % {"obj_name": obj_name}
+
+            if search_query and search_query.lower() not in str(text).lower():
+                continue
 
             activities.append(
                 {

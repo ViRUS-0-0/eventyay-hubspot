@@ -1,5 +1,5 @@
 {% extends "pretixcontrol/event/base.html" %}
-{% load i18n static %}
+{% load i18n static bootstrap3 %}
 
 {% block title %}{% translate "HubSpot Activity Log" %} :: {% endblock %}
 
@@ -15,30 +15,25 @@
         {% translate "HubSpot Activity Log" %}
     </h1>
 
-    <div class="row" style="margin-bottom: 20px;">
-        <div class="col-md-12">
-            <div class="dropdown" id="filterDropdownContainer"
-                data-all-activity="{% translate 'All activity' %}"
-                data-sync-activity="{% translate 'Sync activity' %}"
-                data-settings-changes="{% translate 'Settings changes' %}">
-                <button class="btn btn-default dropdown-toggle" type="button" id="filterDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">
-                    {% if filter_type == 'sync' %}
-                        {% translate "Sync activity" %}
-                    {% elif filter_type == 'settings' %}
-                        {% translate "Settings changes" %}
-                    {% else %}
-                        {% translate "All activity" %}
-                    {% endif %}
-                    <span class="caret"></span>
-                </button>
-                <ul class="dropdown-menu" aria-labelledby="filterDropdown">
-                    <li><a href="?">{% translate "All activity" %}</a></li>
-                    <li><a href="?type=sync">{% translate "Sync activity" %}</a></li>
-                    <li><a href="?type=settings">{% translate "Settings changes" %}</a></li>
-                </ul>
-            </div>
-        </div>
-    </div>
+            <form class="" action="" method="get">
+                <div class="row filter-form">
+                    <div class="col-md-3 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.query layout='inline' %}
+                    </div>
+                    <div class="col-md-2 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.type layout='inline' %}
+                    </div>
+                    <div class="col-md-2 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.date_from layout='inline' %}
+                    </div>
+                    <div class="col-md-2 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.date_until layout='inline' %}
+                    </div>
+                    <div class="col-md-3 col-sm-6 col-xs-12">
+                        {% include "eventyay_common/filter_actions.html" %}
+                    </div>
+                </div>
+            </form>
 
     <div class="panel panel-default">
         <div class="panel-body" id="logs-container">
@@ -55,7 +50,10 @@
                         <tbody>
                             {% for activity in activities %}
                                 <tr>
-                                    <td class="text-muted"><small>{{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}</small></td>
+                                    <td>
+                                    <span class="fa fa-clock-o"></span>
+                                    {{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}
+                                </td>
                                     <td>{{ activity.text }}</td>
                                     <td>{{ activity.type|title }}</td>
                                 </tr>

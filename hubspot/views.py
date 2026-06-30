@@ -18,7 +18,7 @@ from eventyay.base.models import Event
 from eventyay.control.permissions import EventPermissionRequiredMixin
 from eventyay.control.views import PaginationMixin
 
-from .forms import ObjectTypeMappingFormSet
+from .forms import HubSpotLogFilterForm, ObjectTypeMappingFormSet
 from .models import (
     AuditAction,
     AuditLog,
@@ -329,13 +329,30 @@ class EventHubSpotLogView(EventPermissionRequiredMixin, PaginationMixin, ListVie
     context_object_name = "activities"
 
     def get_queryset(self):
-        filter_type = self.request.GET.get("type")
+        form = HubSpotLogFilterForm(self.request.GET)
+        filter_type = None
+        date_from = None
+        date_to = None
+        search_query = None
+
+        if form.is_valid():
+            filter_type = form.cleaned_data.get("type")
+            date_from = form.cleaned_data.get("date_from")
+            date_to = form.cleaned_data.get("date_until")
+            search_query = form.cleaned_data.get("query")
+
         if filter_type not in ["sync", "settings"]:
             filter_type = None
-        self.filter_type = filter_type
-        return get_hubspot_activity_logs(self.request.event, filter_type=filter_type)
+
+        return get_hubspot_activity_logs(
+            self.request.event,
+            filter_type=filter_type,
+            date_from=date_from,
+            date_to=date_to,
+            search_query=search_query,
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["filter_type"] = getattr(self, "filter_type", None)
+        context["filter_form"] = HubSpotLogFilterForm(self.request.GET)
         return context
