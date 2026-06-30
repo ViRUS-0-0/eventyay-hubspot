@@ -35,8 +35,6 @@ class HubSpotPermanentError(HubSpotAPIError):
 class HubSpotRecordNotFoundError(HubSpotPermanentError):
     """404 Not Found — record was deleted in HubSpot."""
 
-    """4xx (except 409) — do not retry."""
-
     pass
 
 
@@ -94,6 +92,10 @@ def update_record(event, object_type: str, record_id: str, properties: dict) -> 
     if not token:
         raise HubSpotPermanentError("Not connected to HubSpot or token is invalid.")
 
+    object_type = {"contact": "contacts", "deal": "deals"}.get(object_type, object_type)
+    if object_type not in {"contacts", "deals"}:
+        raise HubSpotPermanentError(f"Unsupported HubSpot object type: {object_type}")
+
     url = f"https://api.hubapi.com/crm/v3/objects/{object_type}/{record_id}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     payload = {"properties": properties}
@@ -121,6 +123,10 @@ def create_record(event, object_type: str, properties: dict) -> str:
     token = get_valid_hubspot_token(event)
     if not token:
         raise HubSpotPermanentError("Not connected to HubSpot or token is invalid.")
+
+    object_type = {"contact": "contacts", "deal": "deals"}.get(object_type, object_type)
+    if object_type not in {"contacts", "deals"}:
+        raise HubSpotPermanentError(f"Unsupported HubSpot object type: {object_type}")
 
     url = f"https://api.hubapi.com/crm/v3/objects/{object_type}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -178,6 +184,10 @@ def get_record(event, object_type: str, record_id: str, properties: list) -> dic
     token = get_valid_hubspot_token(event)
     if not token:
         raise HubSpotPermanentError("Not connected to HubSpot or token is invalid.")
+
+    object_type = {"contact": "contacts", "deal": "deals"}.get(object_type, object_type)
+    if object_type not in {"contacts", "deals"}:
+        raise HubSpotPermanentError(f"Unsupported HubSpot object type: {object_type}")
 
     url = f"https://api.hubapi.com/crm/v3/objects/{object_type}/{record_id}"
     headers = {"Authorization": f"Bearer {token}"}

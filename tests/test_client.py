@@ -11,6 +11,7 @@ from hubspot.client import (
     HubSpotTransientError,
     create_record,
     update_record,
+    get_record,
 )
 from hubspot.models import HubSpotOAuthToken
 
@@ -40,7 +41,7 @@ def test_create_record_success(mock_post, event, hubspot_token):
     assert record_id == "12345"
     mock_post.assert_called_once()
     args, kwargs = mock_post.call_args
-    assert "contacts" not in args[0]
+    assert "/crm/v3/objects/contacts" in args[0]
     assert kwargs["json"]["properties"] == {"firstname": "John"}
     assert kwargs["headers"]["Authorization"] == "Bearer old_access"
 
@@ -66,7 +67,7 @@ def test_update_record_success(mock_patch, event, hubspot_token):
     assert record_id == "12345"
     mock_patch.assert_called_once()
     args, kwargs = mock_patch.call_args
-    assert "12345" in args[0]
+    assert "/crm/v3/objects/contacts/12345" in args[0]
     assert kwargs["json"]["properties"] == {"firstname": "John"}
 
 
@@ -100,7 +101,7 @@ def test_create_409_falls_back_to_update(mock_patch, mock_post, event, hubspot_t
     mock_patch.assert_called_once()
 
     args, kwargs = mock_patch.call_args
-    assert "98765" in args[0]
+    assert "/crm/v3/objects/contacts/98765" in args[0]
 
 
 @pytest.mark.django_db
@@ -186,3 +187,39 @@ def test_connection_error_raises_transient(mock_post, event, hubspot_token):
 
     with pytest.raises(HubSpotTransientError, match="Connection to HubSpot failed"):
         create_record(event, "contact", {"firstname": "John"})
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.client.requests.get")
+def test_get_record_success(mock_get, event, hubspot_token):
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"properties": {"firstname": "John"}}
+    mock_get.return_value = mock_response
+
+    properties = get_record(event, "contact", "12345", ["firstname"])
+
+    assert properties == {"firstname": "John"}
+    mock_get.assert_called_once()
+    args, kwargs = mock_get.call_args
+    assert "contacts" in args[0]
+    assert "12345" in args[0]
+    assert kwargs["params"] == {"properties": "firstname"}
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.client.requests.get")
+def test_get_record_failure(mock_get, event, hubspot_token):
+    mock_response = mock.Mock()
+    mock_response.ok = False
+    mock_response.status_code = 500
+    mock_response.json.side_effect = ValueError()
+    mock_response.text = "Internal Server Error"
+    mock_response.headers = {}
+    mock_get.return_value = mock_response
+
+    with pytest.raises(HubSpotTransientError) as exc_info:
+        get_record(event, "contact", "12345", ["firstname"])
+
+    assert exc_info.value.status_code == 500
