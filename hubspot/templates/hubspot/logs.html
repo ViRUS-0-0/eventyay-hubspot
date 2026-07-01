@@ -50,10 +50,10 @@
                         <tbody>
                             {% for activity in activities %}
                                 <tr>
-                                    <td>
-                                    <span class="fa fa-clock-o"></span>
-                                    {{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}
-                                </td>
+                                    <td class="text-muted">
+                                        <span class="fa fa-clock-o"></span>
+                                        {{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}
+                                    </td>
                                     <td>{{ activity.text }}</td>
                                     <td>{{ activity.type|title }}</td>
                                 </tr>
