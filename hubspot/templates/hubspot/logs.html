@@ -3,10 +3,6 @@
 
 {% block title %}{% translate "HubSpot Activity Log" %} :: {% endblock %}
 
-{% block custom_header %}
-<script src="{% static 'hubspot/js/logs.js' %}"></script>
-{% endblock %}
-
 {% block content %}
     <h1>
         <a href="{% url 'plugins:hubspot:hubspot' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-link btn-lg">
@@ -15,8 +11,8 @@
         {% translate "HubSpot Activity Log" %}
     </h1>
 
-            <form class="" action="" method="get">
-                <div class="row filter-form">
+            <form class="filter-form" action="" method="get">
+                <div class="row">
                     <div class="col-md-3 col-sm-6 col-xs-12">
                         {% bootstrap_field filter_form.query layout='inline' %}
                     </div>
@@ -36,7 +32,7 @@
             </form>
 
     <div class="panel panel-default">
-        <div class="panel-body" id="logs-container">
+        <div class="panel-body" id="logs-container" data-ajax-results-region>
             {% if activities %}
                 <div class="table-responsive">
                     <table class="table table-hover table-striped">
