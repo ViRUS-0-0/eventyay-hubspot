@@ -3,6 +3,7 @@ from hubspot.views import (
     EventHubSpotCallbackView,
     EventHubSpotConnectView,
     EventHubSpotDisconnectView,
+    EventHubSpotFieldMappingView,
     EventHubSpotSettingsView,
     EventHubSpotLogView,
 )
@@ -27,6 +28,11 @@ urlpatterns = [
         "control/hubspot/callback/",
         EventHubSpotCallbackView.as_view(),
         name="callback",
+    ),
+    path(
+        "control/event/<orgslug:organizer>/<slug:event>/hubspot/mapping/<int:mapping_id>/fields/",
+        EventHubSpotFieldMappingView.as_view(),
+        name="mapping_fields",
     ),
     path(
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/logs/",

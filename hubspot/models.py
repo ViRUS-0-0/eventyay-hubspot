@@ -32,6 +32,13 @@ class SyncStatus(models.TextChoices):
     PENDING = "pending"
 
 
+class SyncMode(models.TextChoices):
+    IDENTIFIER = "identifier", _("Identifier")
+    OVERWRITE = "overwrite", _("Overwrite")
+    FILL_IF_NEW = "fill_if_new", _("Fill if new")
+    FILL_IF_EMPTY = "fill_if_empty", _("Fill if empty")
+
+
 class HubSpotOAuthToken(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
     objects = ScopedManager(organizer="event__organizer")
@@ -122,6 +129,9 @@ class HubSpotFieldMapping(models.Model):
     eventyay_field = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
     hubspot_property = models.CharField(max_length=190)
+    sync_mode = models.CharField(
+        max_length=20, choices=SyncMode.choices, default=SyncMode.OVERWRITE
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
