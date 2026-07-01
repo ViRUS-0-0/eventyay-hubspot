@@ -178,6 +178,7 @@ class AuditAction(models.TextChoices):
     TOKEN_REFRESH = "token_refresh"
     REFRESH_FAILED = "refresh_failed"
     MAPPING_UPDATED = "mapping_updated"
+    FIELD_MAPPING_UPDATED = "field_map_updated"
 
 
 class AuditLog(models.Model):

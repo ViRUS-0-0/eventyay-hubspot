@@ -480,6 +480,13 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             for obj in formset.deleted_objects:
                 obj.delete()
 
+            AuditLog.objects.create(
+                organizer=request.event.organizer,
+                event=request.event,
+                action=AuditAction.FIELD_MAPPING_UPDATED,
+                ip_address=get_client_ip(request),
+            )
+
             messages.success(
                 request, _("Field mapping configuration saved successfully.")
             )

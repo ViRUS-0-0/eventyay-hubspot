@@ -20,16 +20,18 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             logsContainer.style.opacity = '1';
             
-            // Also update the dropdown text if it's a filter click
-            let searchParams = new URL(url, window.location.origin).searchParams;
-            let type = searchParams.get('type');
-            let filterText = filterDropdownContainer.dataset.allActivity;
-            if (type === 'sync') {
-                filterText = filterDropdownContainer.dataset.syncActivity;
-            } else if (type === 'settings') {
-                filterText = filterDropdownContainer.dataset.settingsChanges;
+            // Update the dropdown text if the page provides a dropdown
+            if (filterDropdown && filterDropdownContainer) {
+                const searchParams = new URL(url, window.location.origin).searchParams;
+                const type = searchParams.get('type');
+                let filterText = filterDropdownContainer.dataset.allActivity;
+                if (type === 'sync') {
+                    filterText = filterDropdownContainer.dataset.syncActivity;
+                } else if (type === 'settings') {
+                    filterText = filterDropdownContainer.dataset.settingsChanges;
+                }
+                filterDropdown.innerHTML = filterText + ' <span class="caret"></span>';
             }
-            filterDropdown.innerHTML = filterText + ' <span class="caret"></span>';
             
             // Update URL in browser history
             window.history.pushState({path: url}, '', url);
