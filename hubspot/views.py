@@ -541,3 +541,60 @@ class EventHubSpotLogView(EventPermissionRequiredMixin, PaginationMixin, ListVie
         context = super().get_context_data(**kwargs)
         context["filter_form"] = HubSpotLogFilterForm(self.request.GET)
         return context
+
+    def post(self, request, *args, **kwargs):
+        if request.POST.get("action") == "delete":
+            if request.POST.get("select_all_pages") == "1":
+                qs = self.get_queryset()
+                if qs.search_query:
+                    # If there's a search query, we must iterate since filtering happens in Python
+                    audit_ids = []
+                    sync_ids = []
+                    for item in qs:
+                        if item["id"].startswith("audit_"):
+                            audit_ids.append(int(item["id"].split("_")[1]))
+                        elif item["id"].startswith("sync_"):
+                            sync_ids.append(int(item["id"].split("_")[1]))
+                    if audit_ids:
+                        AuditLog.objects.filter(
+                            event=request.event, id__in=audit_ids
+                        ).delete()
+                    if sync_ids:
+                        SyncLog.objects.filter(
+                            event=request.event, id__in=sync_ids
+                        ).delete()
+                else:
+                    # If no search query, we can directly delete the querysets
+                    qs.audit_logs.delete()
+                    qs.sync_logs.delete()
+            else:
+                log_ids = request.POST.getlist("log_id")
+                audit_ids = []
+                sync_ids = []
+                for log_id in log_ids:
+                    if log_id.startswith("audit_"):
+                        try:
+                            audit_ids.append(int(log_id.split("_")[1]))
+                        except (ValueError, IndexError):
+                            pass
+                    elif log_id.startswith("sync_"):
+                        try:
+                            sync_ids.append(int(log_id.split("_")[1]))
+                        except (ValueError, IndexError):
+                            pass
+
+                if audit_ids:
+                    AuditLog.objects.filter(
+                        event=request.event, id__in=audit_ids
+                    ).delete()
+                if sync_ids:
+                    SyncLog.objects.filter(
+                        event=request.event, id__in=sync_ids
+                    ).delete()
+
+            messages.success(request, _("Selected logs have been deleted."))
+            return redirect(
+                request.path_info + "?" + request.META.get("QUERY_STRING", "")
+            )
+
+        return self.get(request, *args, **kwargs)
