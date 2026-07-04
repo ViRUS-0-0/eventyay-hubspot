@@ -13,7 +13,6 @@ from .models import (
     AuditLog,
     SyncLog,
 )
-import os
 from django.utils.timezone import now
 from datetime import timedelta
 
@@ -71,10 +70,7 @@ def cleanup_associated_mappings(sender, instance, **kwargs):
 
 @receiver(periodic_task, dispatch_uid="hubspot_clear_audit_logs")
 def clear_audit_logs(sender, **kwargs):
-    try:
-        days = int(os.environ.get("HUBSPOT_AUDIT_LOG_RETENTION_DAYS", "180"))
-    except ValueError:
-        days = 180
+    days = 180
 
     threshold = now() - timedelta(days=days)
     AuditLog.objects.filter(created_at__lt=threshold).delete()
