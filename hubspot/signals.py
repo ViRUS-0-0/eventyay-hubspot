@@ -4,8 +4,17 @@ from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from django.contrib.contenttypes.models import ContentType
 from eventyay.base.models import Order, OrderPosition
+from eventyay.base.signals import periodic_task
 from eventyay.control.signals import nav_event
-from .models import ObjectTypeMapping, HubSpotFieldMapping, HubSpotObjectMapping
+from .models import (
+    ObjectTypeMapping,
+    HubSpotFieldMapping,
+    HubSpotObjectMapping,
+    AuditLog,
+    SyncLog,
+)
+from django.utils.timezone import now
+from datetime import timedelta
 
 
 @receiver(nav_event, dispatch_uid="hubspot_nav")
@@ -52,9 +61,17 @@ def cleanup_associated_mappings(sender, instance, **kwargs):
         hubspot_object_type=instance.hubspot_object_type,
     ).delete()
 
-    # Delete associated Object Mappings (sync history)
     HubSpotObjectMapping.objects.filter(
         event=instance.event,
         content_type=content_type,
         hubspot_object_type=instance.hubspot_object_type,
     ).delete()
+
+
+@receiver(periodic_task, dispatch_uid="hubspot_clear_audit_logs")
+def clear_audit_logs(sender, **kwargs):
+    days = 180
+
+    threshold = now() - timedelta(days=days)
+    AuditLog.objects.filter(created_at__lt=threshold).delete()
+    SyncLog.objects.filter(created_at__lt=threshold).delete()

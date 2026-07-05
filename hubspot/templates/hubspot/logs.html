@@ -1,0 +1,104 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n static bootstrap3 %}
+
+{% block title %}{% translate "HubSpot Activity Log" %} :: {% endblock %}
+
+{% block content %}
+    <h1>
+        <a href="{% url 'plugins:hubspot:hubspot' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-link btn-lg">
+            <i class="fa fa-arrow-left"></i>
+        </a>
+        {% translate "HubSpot Activity Log" %}
+    </h1>
+
+            <form class="filter-form" action="" method="get">
+                <div class="row">
+                    <div class="col-md-3 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.query layout='inline' %}
+                    </div>
+                    <div class="col-md-2 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.type layout='inline' %}
+                    </div>
+                    <div class="col-md-2 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.date_from layout='inline' %}
+                    </div>
+                    <div class="col-md-2 col-sm-6 col-xs-12">
+                        {% bootstrap_field filter_form.date_until layout='inline' %}
+                    </div>
+                    <div class="col-md-3 col-sm-6 col-xs-12">
+                        <div style="display: flex; gap: 10px; align-items: flex-start;">
+                            {% include "eventyay_common/filter_actions.html" %}
+                            <button type="submit" form="logs-form" id="delete-logs-btn" class="btn btn-danger" name="action" value="delete" style="display: none;" title="{% translate 'Delete logs' %}">
+                                <i class="fa fa-trash"></i> {% translate 'Delete logs' %}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+    <div class="panel panel-default">
+        <div class="panel-body" id="logs-container" data-ajax-results-region>
+            {% if activities %}
+                <form id="logs-form" method="post" action="">
+                    {% csrf_token %}
+                    {% if is_paginated and paginator.count > activities|length %}
+                        <div id="select-all-message" class="alert alert-info text-center" style="display: none; margin-bottom: 15px;">
+                            {% blocktranslate trimmed with count=activities|length total=paginator.count %}
+                                All <strong>{{ count }}</strong> logs on this page are selected.
+                            {% endblocktranslate %}
+                            <a href="#" id="select-all-pages-link">
+                                {% blocktranslate trimmed with total=paginator.count %}
+                                    Select all <strong>{{ total }}</strong> logs
+                                {% endblocktranslate %}
+                            </a>
+                        </div>
+                        <div id="all-pages-selected-message" class="alert alert-info text-center" style="display: none; margin-bottom: 15px;">
+                            {% blocktranslate trimmed with total=paginator.count %}
+                                All <strong>{{ total }}</strong> logs have been selected.
+                            {% endblocktranslate %}
+                            <a href="#" id="clear-selection-link">{% translate "Clear selection" %}</a>
+                        </div>
+                        <input type="hidden" name="select_all_pages" id="select-all-pages-input" value="0">
+                    {% endif %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    <th class="text-center" style="width: 40px;">
+                                        <input type="checkbox" id="select-all" title="{% translate 'Select all' %}" />
+                                    </th>
+                                    <th>{% translate "Time" %}</th>
+                                    <th>{% translate "Action" %}</th>
+                                    <th>{% translate "Log Type" %}</th>
+                                </tr>
+                            </thead>
+                        <tbody>
+                            {% for activity in activities %}
+                                <tr>
+                                    <td class="text-center">
+                                        <input type="checkbox" name="log_id" value="{{ activity.id }}" class="log-checkbox" />
+                                    </td>
+                                    <td class="text-muted">
+                                        <span class="fa fa-clock-o"></span>
+                                        {{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}
+                                    </td>
+                                    <td>{{ activity.text }}</td>
+                                    <td>{{ activity.type|title }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 text-center">
+                        {% include "pretixcontrol/pagination.html" %}
+                    </div>
+                </div>
+                </form>
+                <script src="{% static 'hubspot/js/logs.js' %}"></script>
+            {% else %}
+                <p class="text-muted">{% translate "No activity found for this filter." %}</p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
