@@ -30,6 +30,7 @@ from .forms import (
 from .models import (
     AuditAction,
     AuditLog,
+    HubSpotEventSettings,
     HubSpotFieldMapping,
     HubSpotOAuthToken,
     ObjectTypeMapping,
@@ -43,6 +44,7 @@ from .models import (
 from .field_discovery import get_available_fields
 from .services import get_hubspot_properties, sync_hubspot_properties
 from .utils import get_hubspot_activity_logs
+from .tasks import sync_all_mappings_task
 
 
 def get_client_ip(request):
@@ -326,6 +328,100 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
         return redirect(settings_url)
 
 
+class EventHubSpotLogView(EventPermissionRequiredMixin, PaginationMixin, ListView):
+    """Full activity log page for HubSpot integration."""
+
+    template_name = "hubspot/logs.html"
+    permission = "can_change_event_settings"
+    context_object_name = "activities"
+
+    def get_queryset(self):
+        form = HubSpotLogFilterForm(self.request.GET)
+        filter_type = None
+        date_from = None
+        date_to = None
+        search_query = None
+
+        if form.is_valid():
+            filter_type = form.cleaned_data.get("type")
+            date_from = form.cleaned_data.get("date_from")
+            date_to = form.cleaned_data.get("date_until")
+            search_query = form.cleaned_data.get("query")
+
+        if filter_type not in ["sync", "settings"]:
+            filter_type = None
+
+        return get_hubspot_activity_logs(
+            self.request.event,
+            filter_type=filter_type,
+            date_from=date_from,
+            date_to=date_to,
+            search_query=search_query,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["filter_form"] = HubSpotLogFilterForm(self.request.GET)
+        return context
+
+    def post(self, request, *args, **kwargs):
+        if request.POST.get("action") == "delete":
+            if request.POST.get("select_all_pages") == "1":
+                qs = self.get_queryset()
+                if qs.search_query:
+                    # If there's a search query, we must iterate since filtering happens in Python
+                    audit_ids = []
+                    sync_ids = []
+                    for item in qs:
+                        if item["id"].startswith("audit_"):
+                            audit_ids.append(int(item["id"].split("_")[1]))
+                        elif item["id"].startswith("sync_"):
+                            sync_ids.append(int(item["id"].split("_")[1]))
+                    if audit_ids:
+                        AuditLog.objects.filter(
+                            event=request.event, id__in=audit_ids
+                        ).delete()
+                    if sync_ids:
+                        SyncLog.objects.filter(
+                            event=request.event, id__in=sync_ids
+                        ).delete()
+                else:
+                    # If no search query, we can directly delete the querysets
+                    qs.audit_logs.delete()
+                    qs.sync_logs.delete()
+            else:
+                log_ids = request.POST.getlist("log_id")
+                audit_ids = []
+                sync_ids = []
+                for log_id in log_ids:
+                    if log_id.startswith("audit_"):
+                        try:
+                            audit_ids.append(int(log_id.split("_")[1]))
+                        except (ValueError, IndexError):
+                            pass
+                    elif log_id.startswith("sync_"):
+                        try:
+                            sync_ids.append(int(log_id.split("_")[1]))
+                        except (ValueError, IndexError):
+                            pass
+
+                if audit_ids:
+                    AuditLog.objects.filter(
+                        event=request.event, id__in=audit_ids
+                    ).delete()
+                if sync_ids:
+                    SyncLog.objects.filter(
+                        event=request.event, id__in=sync_ids
+                    ).delete()
+
+            messages.success(request, _("Selected logs have been deleted."))
+            return redirect(
+                request.path_info + "?" + request.META.get("QUERY_STRING", "")
+            )
+
+        return self.get(request, *args, **kwargs)
+
+
 class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
     """View to manage field mapping rows for a specific object mapping type."""
 
@@ -501,100 +597,49 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
                 )
             )
         else:
+            messages.error(
+                request,
+                _(
+                    "There were errors saving your configuration. Please check the form."
+                ),
+            )
             return self.render_to_response(
                 self.get_context_data(setup=setup, formset=formset)
             )
 
 
-class EventHubSpotLogView(EventPermissionRequiredMixin, PaginationMixin, ListView):
-    """Full activity log page for HubSpot integration."""
+class EventHubSpotSyncMappingView(EventPermissionRequiredMixin, View):
+    """Triggers background sync for all mappings of the event."""
 
-    template_name = "hubspot/logs.html"
     permission = "can_change_event_settings"
-    context_object_name = "activities"
-
-    def get_queryset(self):
-        form = HubSpotLogFilterForm(self.request.GET)
-        filter_type = None
-        date_from = None
-        date_to = None
-        search_query = None
-
-        if form.is_valid():
-            filter_type = form.cleaned_data.get("type")
-            date_from = form.cleaned_data.get("date_from")
-            date_to = form.cleaned_data.get("date_until")
-            search_query = form.cleaned_data.get("query")
-
-        if filter_type not in ["sync", "settings"]:
-            filter_type = None
-
-        return get_hubspot_activity_logs(
-            self.request.event,
-            filter_type=filter_type,
-            date_from=date_from,
-            date_to=date_to,
-            search_query=search_query,
-        )
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["filter_form"] = HubSpotLogFilterForm(self.request.GET)
-        return context
 
     def post(self, request, *args, **kwargs):
-        if request.POST.get("action") == "delete":
-            if request.POST.get("select_all_pages") == "1":
-                qs = self.get_queryset()
-                if qs.search_query:
-                    # If there's a search query, we must iterate since filtering happens in Python
-                    audit_ids = []
-                    sync_ids = []
-                    for item in qs:
-                        if item["id"].startswith("audit_"):
-                            audit_ids.append(int(item["id"].split("_")[1]))
-                        elif item["id"].startswith("sync_"):
-                            sync_ids.append(int(item["id"].split("_")[1]))
-                    if audit_ids:
-                        AuditLog.objects.filter(
-                            event=request.event, id__in=audit_ids
-                        ).delete()
-                    if sync_ids:
-                        SyncLog.objects.filter(
-                            event=request.event, id__in=sync_ids
-                        ).delete()
-                else:
-                    # If no search query, we can directly delete the querysets
-                    qs.audit_logs.delete()
-                    qs.sync_logs.delete()
-            else:
-                log_ids = request.POST.getlist("log_id")
-                audit_ids = []
-                sync_ids = []
-                for log_id in log_ids:
-                    if log_id.startswith("audit_"):
-                        try:
-                            audit_ids.append(int(log_id.split("_")[1]))
-                        except (ValueError, IndexError):
-                            pass
-                    elif log_id.startswith("sync_"):
-                        try:
-                            sync_ids.append(int(log_id.split("_")[1]))
-                        except (ValueError, IndexError):
-                            pass
+        settings_url = reverse(
+            "plugins:hubspot:hubspot",
+            kwargs={
+                "organizer": request.event.organizer.slug,
+                "event": request.event.slug,
+            },
+        )
 
-                if audit_ids:
-                    AuditLog.objects.filter(
-                        event=request.event, id__in=audit_ids
-                    ).delete()
-                if sync_ids:
-                    SyncLog.objects.filter(
-                        event=request.event, id__in=sync_ids
-                    ).delete()
+        try:
+            token = HubSpotOAuthToken.objects.get(event=request.event)
+            token.check()  # Ensure token is valid and refresh if needed
+        except HubSpotOAuthToken.DoesNotExist:
+            messages.error(request, _("Not connected to HubSpot."))
+            return redirect(settings_url)
 
-            messages.success(request, _("Selected logs have been deleted."))
-            return redirect(
-                request.path_info + "?" + request.META.get("QUERY_STRING", "")
-            )
+        settings = HubSpotEventSettings.objects.filter(event=request.event).first()
+        if not settings or not settings.sync_enabled:
+            messages.error(request, _("Sync is disabled for this event."))
+            return redirect(settings_url)
 
-        return self.get(request, *args, **kwargs)
+        sync_all_mappings_task.apply_async(args=[request.event.id])
+
+        messages.success(
+            request,
+            _(
+                "Mapping sync started in the background. Depending on the amount of data, this may take a few minutes."
+            ),
+        )
+        return redirect(settings_url)

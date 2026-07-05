@@ -6,10 +6,15 @@ from django.contrib.contenttypes.models import ContentType
 from eventyay.base.models import Order, OrderPosition
 from eventyay.base.signals import periodic_task
 from eventyay.control.signals import nav_event
+from django_scopes import scope
+from eventyay.base.signals import order_placed, order_paid, order_canceled
+from .tasks import sync_order_to_hubspot
 from .models import (
+    HubSpotEventSettings,
     ObjectTypeMapping,
     HubSpotFieldMapping,
     HubSpotObjectMapping,
+    HubSpotOAuthToken,
     AuditLog,
     SyncLog,
 )
@@ -34,6 +39,34 @@ def control_nav_import(sender, request=None, **kwargs):
             "icon": "bar-chart",
         }
     ]
+
+
+def _enqueue_hubspot_sync(sender, order, **kwargs):
+    if not order:
+        return
+    with scope(organizer=order.event.organizer):
+        settings = HubSpotEventSettings.objects.filter(event=order.event).first()
+        if not settings or not settings.sync_enabled:
+            return
+        if not HubSpotOAuthToken.objects.filter(event=order.event).exists():
+            return
+
+    sync_order_to_hubspot.apply_async(args=[order.id, order.event.id], countdown=5)
+
+
+@receiver(order_placed, dispatch_uid="hubspot_order_placed")
+def on_order_placed(sender, order, **kwargs):
+    _enqueue_hubspot_sync(sender, order, **kwargs)
+
+
+@receiver(order_paid, dispatch_uid="hubspot_order_paid")
+def on_order_paid(sender, order, **kwargs):
+    _enqueue_hubspot_sync(sender, order, **kwargs)
+
+
+@receiver(order_canceled, dispatch_uid="hubspot_order_canceled")
+def on_order_canceled(sender, order, **kwargs):
+    _enqueue_hubspot_sync(sender, order, **kwargs)
 
 
 @receiver(
