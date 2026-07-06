@@ -119,6 +119,13 @@ def sync_hubspot_properties(event, object_type: str):
         for prop in results:
             if prop.get("hidden"):
                 continue
+
+            modification_metadata = prop.get("modificationMetadata", {})
+            if modification_metadata.get("readOnlyValue"):
+                continue
+
+            if prop.get("calculated"):
+                continue
             HubSpotProperty.objects.update_or_create(
                 event=event,
                 object_type=object_type,
