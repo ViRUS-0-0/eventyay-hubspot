@@ -239,7 +239,11 @@ def resolve_hubspot_properties(
             key=mapping.hubspot_property,
         ).first()
 
-        data_type = hs_prop.data_type if hs_prop else "text"
+        if not hs_prop:
+            # Skip properties that don't exist in HubSpot or are read-only
+            continue
+
+        data_type = hs_prop.data_type
         val = _convert_value(val, data_type)
         if val is not None:
             properties[mapping.hubspot_property] = val
@@ -343,6 +347,8 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
             hubspot_object_type=config.hubspot_object_type,
         )
         existing_id = hs_mapping.hubspot_object_id
+        if not existing_id:
+            existing_id = None
     except HubSpotObjectMapping.DoesNotExist:
         hs_mapping = None
         existing_id = None
@@ -389,6 +395,27 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
                     properties_to_send[prop] = val
 
     if not properties_to_send:
+        with transaction.atomic():
+            hs_mapping, _ = HubSpotObjectMapping.objects.update_or_create(
+                event=event,
+                content_type=content_type,
+                object_id=obj.id,
+                hubspot_object_type=config.hubspot_object_type,
+                defaults={
+                    "hubspot_object_id": existing_id or "",
+                    "last_synced_at": now(),
+                },
+            )
+            SyncLog.objects.create(
+                event=event,
+                object_mapping=hs_mapping,
+                action=SyncAction.UPDATE if existing_id else SyncAction.CREATE,
+                direction=SyncDirection.PUSH,
+                status=SyncStatus.SUCCESS,
+                detail={
+                    "message": "No properties to sync based on mappings and current values"
+                },
+            )
         return
 
     try:
@@ -463,7 +490,7 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
                     event, config.hubspot_object_type, existing_id, properties_to_send
                 )
             else:
-                hubspot_id = existing_id
+                hubspot_id = existing_id or ""
 
         # Update or create the tracking record
         with transaction.atomic():
@@ -487,6 +514,16 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
     except HubSpotTransientError as e:
         raise e
     except HubSpotPermanentError as e:
+        if not hs_mapping:
+            hs_mapping, _ = HubSpotObjectMapping.objects.update_or_create(
+                event=event,
+                content_type=content_type,
+                object_id=obj.id,
+                hubspot_object_type=config.hubspot_object_type,
+                defaults={
+                    "hubspot_object_id": existing_id or "",
+                },
+            )
         SyncLog.objects.create(
             event=event,
             object_mapping=hs_mapping,

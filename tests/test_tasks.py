@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from unittest import mock
 from django.contrib.contenttypes.models import ContentType
 from eventyay.base.models import InvoiceAddress
@@ -130,6 +131,29 @@ def test_sync_modes(mock_update, mock_get_record, mock_event, object_mapping, or
     )
 
     # Add field mappings
+    dummy_batch = uuid.uuid4()
+    HubSpotProperty.objects.create(
+        event=mock_event,
+        object_type="contacts",
+        key="email",
+        data_type="text",
+        sync_batch=dummy_batch,
+    )
+    HubSpotProperty.objects.create(
+        event=mock_event,
+        object_type="contacts",
+        key="amount",
+        data_type="number",
+        sync_batch=dummy_batch,
+    )
+    HubSpotProperty.objects.create(
+        event=mock_event,
+        object_type="contacts",
+        key="locale",
+        data_type="text",
+        sync_batch=dummy_batch,
+    )
+
     HubSpotFieldMapping.objects.create(
         event=mock_event,
         content_type=ct,
@@ -191,6 +215,22 @@ def test_sync_fill_if_empty(
         hubspot_object_id="hub_123",
     )
 
+    dummy_batch = uuid.uuid4()
+    HubSpotProperty.objects.create(
+        event=mock_event,
+        object_type="contacts",
+        key="phone",
+        data_type="text",
+        sync_batch=dummy_batch,
+    )
+    HubSpotProperty.objects.create(
+        event=mock_event,
+        object_type="contacts",
+        key="company",
+        data_type="text",
+        sync_batch=dummy_batch,
+    )
+
     HubSpotFieldMapping.objects.create(
         event=mock_event,
         content_type=ct,
@@ -241,6 +281,15 @@ def test_transient_error_retries(
     mock_create.side_effect = HubSpotTransientError("Timeout", retry_after_seconds=10)
 
     ct = ContentType.objects.get_for_model(order)
+
+    HubSpotProperty.objects.create(
+        event=mock_event,
+        object_type="contacts",
+        key="email",
+        data_type="text",
+        sync_batch=uuid.uuid4(),
+    )
+
     HubSpotFieldMapping.objects.create(
         event=mock_event,
         content_type=ct,
@@ -263,6 +312,15 @@ def test_permanent_error_no_retry(mock_create, mock_event, object_mapping, order
     mock_create.side_effect = HubSpotPermanentError("Invalid data", status_code=400)
 
     ct = ContentType.objects.get_for_model(order)
+
+    HubSpotProperty.objects.create(
+        event=mock_event,
+        object_type="contacts",
+        key="email",
+        data_type="text",
+        sync_batch=uuid.uuid4(),
+    )
+
     HubSpotFieldMapping.objects.create(
         event=mock_event,
         content_type=ct,
