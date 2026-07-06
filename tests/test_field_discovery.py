@@ -1,6 +1,7 @@
 import pytest
 from eventyay.base.models import Question
 
+from django_scopes import scope
 from hubspot.field_discovery import get_available_fields
 
 
@@ -62,8 +63,6 @@ def test_get_available_fields_order_position_no_event():
 @pytest.mark.django_db
 def test_get_available_fields_order_position_empty_event(event):
     # Event without any questions defined
-    from django_scopes import scope
-
     with scope(organizer=event.organizer):
         fields = get_available_fields("order_position", event=event)
 
@@ -75,8 +74,6 @@ def test_get_available_fields_order_position_empty_event(event):
 
 @pytest.mark.django_db
 def test_get_available_fields_order_position_with_event(event):
-    from django_scopes import scope
-
     with scope(organizer=event.organizer):
         # Create some questions for the event
         Question.objects.create(

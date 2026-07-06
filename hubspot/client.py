@@ -38,6 +38,14 @@ class HubSpotRecordNotFoundError(HubSpotPermanentError):
     pass
 
 
+class HubSpotConflictError(HubSpotPermanentError):
+    """409 Conflict — record already exists."""
+
+    def __init__(self, message, existing_id, status_code=409, response_body=None):
+        super().__init__(message, status_code, response_body)
+        self.existing_id = existing_id
+
+
 def _raise_for_status(response: requests.Response) -> None:
     """Raise HubSpotTransientError or HubSpotPermanentError based on status code."""
     if response.ok:
@@ -158,9 +166,13 @@ def create_record(event, object_type: str, properties: dict) -> str:
         if match:
             existing_id = match.group(1)
             logger.info(
-                f"HubSpot 409 Conflict for {object_type}. Falling back to update for ID {existing_id}."
+                f"HubSpot 409 Conflict for {object_type}. Existing ID: {existing_id}."
             )
-            return update_record(event, object_type, existing_id, properties)
+            raise HubSpotConflictError(
+                message=f"HubSpot API conflict: record already exists with ID {existing_id}.",
+                existing_id=existing_id,
+                response_body=response_body,
+            )
         else:
             # If we get a 409 but can't extract the ID, treat it as a permanent error
             raise HubSpotPermanentError(

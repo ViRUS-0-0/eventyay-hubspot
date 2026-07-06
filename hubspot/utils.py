@@ -59,6 +59,14 @@ class ActivityLogSequence:
                 _("Field mapping settings were updated"),
                 "settings",
             ),
+            "auto_sync_enabled": (
+                _("Automatic sync was enabled"),
+                "settings",
+            ),
+            "auto_sync_disabled": (
+                _("Automatic sync was disabled"),
+                "settings",
+            ),
         }
 
         self.SYNC_STATUS_MESSAGES = {

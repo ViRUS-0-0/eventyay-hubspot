@@ -2,7 +2,9 @@ import pytest
 from django.urls import reverse
 from unittest import mock
 from django_scopes import scope
-from hubspot.models import HubSpotOAuthToken
+from hubspot.models import HubSpotOAuthToken, HubSpotProperty, HubSpotPropertySyncState
+import uuid
+import requests
 
 
 @pytest.mark.django_db
@@ -75,9 +77,6 @@ def test_hubspot_disconnect_view_connected(
     mock_response.ok = True
     mock_delete.return_value = mock_response
 
-    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
-    import uuid
-
     with scope(organizer=event.organizer):
         batch = uuid.uuid4()
         HubSpotProperty.objects.create(
@@ -117,7 +116,6 @@ def test_hubspot_disconnect_view_revoke_failure_still_clears(
         )
 
     # Simulate a network error or 500 from HubSpot
-    import requests
 
     mock_delete.side_effect = requests.RequestException("Timeout")
 
@@ -132,3 +130,54 @@ def test_hubspot_disconnect_view_revoke_failure_still_clears(
     with scope(organizer=event.organizer):
         # Local state should still be cleared
         assert not HubSpotOAuthToken.objects.filter(event=event).exists()
+
+
+@pytest.mark.django_db
+def test_hubspot_settings_save_auto_sync_audit_log(
+    logged_in_organizer_client, organizer, event, settings
+):
+    from hubspot.models import AuditLog, AuditAction, HubSpotEventSettings
+
+    settings.SITE_URL = "https://testserver"
+
+    # Get settings or create
+    with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.get_or_create(
+            event=event, defaults={"auto_sync_enabled": True}
+        )
+
+    url = reverse(
+        "plugins:hubspot:hubspot",
+        kwargs={"organizer": organizer.slug, "event": event.slug},
+    )
+
+    # Disable auto_sync
+    response = logged_in_organizer_client.post(
+        url,
+        {
+            "form_type": "settings",
+            "auto_sync_enabled": "False",  # checkbox off/False
+            # Add other fields if necessary
+        },
+    )
+    assert response.status_code == 302
+
+    with scope(organizer=event.organizer):
+        assert AuditLog.objects.filter(
+            event=event, action=AuditAction.AUTO_SYNC_DISABLED
+        ).exists()
+
+    # Enable auto_sync again
+    response = logged_in_organizer_client.post(
+        url,
+        {
+            "form_type": "settings",
+            "auto_sync_enabled": "on",  # checkbox on
+        },
+    )
+    assert response.status_code == 302
+
+    with scope(organizer=event.organizer):
+        assert AuditLog.objects.filter(
+            event=event, action=AuditAction.AUTO_SYNC_ENABLED
+        ).exists()

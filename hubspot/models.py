@@ -82,6 +82,9 @@ class HubSpotEventSettings(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
     objects = ScopedManager(organizer="event__organizer")
     sync_enabled = models.BooleanField(default=False)
+    auto_sync_enabled = models.BooleanField(
+        default=True, verbose_name=_("Sync automatically")
+    )
     sync_contacts = models.BooleanField(default=True)
     sync_deals = models.BooleanField(default=True)
     deal_pipeline = models.CharField(max_length=200, blank=True)
@@ -179,6 +182,8 @@ class AuditAction(models.TextChoices):
     REFRESH_FAILED = "refresh_failed"
     MAPPING_UPDATED = "mapping_updated"
     FIELD_MAPPING_UPDATED = "field_map_updated"
+    AUTO_SYNC_ENABLED = "auto_sync_enabled"
+    AUTO_SYNC_DISABLED = "auto_sync_disabled"
 
 
 class AuditLog(models.Model):
