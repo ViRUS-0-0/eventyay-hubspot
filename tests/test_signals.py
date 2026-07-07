@@ -19,6 +19,7 @@ def disable_scopes():
 @pytest.mark.django_db
 @mock.patch("hubspot.signals.sync_order_to_hubspot.apply_async")
 def test_enqueue_sync_skipped_if_disabled(mock_apply, event, order):
+    order.status = "p"
     # No settings
     _enqueue_hubspot_sync(None, order)
     mock_apply.assert_not_called()
@@ -66,6 +67,7 @@ def test_enqueue_sync_auto_sync_disabled(mock_apply, event, order):
         expires_at=now() + datetime.timedelta(hours=1),
     )
 
+    order.status = "p"
     _enqueue_hubspot_sync(None, order)
     mock_apply.assert_not_called()
     assert SyncLog.objects.filter(event=event, status=SyncStatus.PENDING).exists()
