@@ -280,13 +280,14 @@ def _convert_value(value: Any, data_type: str) -> Any:
     return str(value)
 
 
-@shared_task(bind=True, max_retries=5)
+@shared_task(bind=True, max_retries=3)
 def sync_order_to_hubspot(self, order_id: int, event_id: int):
     """
     Main sync task that resolves fields, applies sync modes, and pushes to HubSpot.
     """
     try:
-        event = Event.objects.get(id=event_id)
+        with scopes_disabled():
+            event = Event.objects.get(id=event_id)
     except Event.DoesNotExist:
         return
 
@@ -301,7 +302,15 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
             return
 
         try:
-            order = Order.objects.get(id=order_id, event=event)
+            order = (
+                Order.objects.select_related("invoice_address")
+                .prefetch_related(
+                    "positions__product",
+                    "positions__voucher",
+                    "positions__answers__question",
+                )
+                .get(id=order_id, event=event)
+            )
         except Order.DoesNotExist:
             return
 
