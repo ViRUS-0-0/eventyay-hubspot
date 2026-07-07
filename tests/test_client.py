@@ -79,8 +79,7 @@ def test_update_record_no_token(event, caplog):
 
 @pytest.mark.django_db
 @mock.patch("hubspot.client.requests.post")
-@mock.patch("hubspot.client.requests.patch")
-def test_create_409_falls_back_to_update(mock_patch, mock_post, event, hubspot_token):
+def test_create_409_raises_conflict(mock_post, event, hubspot_token):
     mock_post_response = mock.Mock()
     mock_post_response.ok = False
     mock_post_response.status_code = 409
@@ -89,19 +88,14 @@ def test_create_409_falls_back_to_update(mock_patch, mock_post, event, hubspot_t
     }
     mock_post.return_value = mock_post_response
 
-    mock_patch_response = mock.Mock()
-    mock_patch_response.ok = True
-    mock_patch_response.status_code = 200
-    mock_patch.return_value = mock_patch_response
+    from hubspot.client import HubSpotConflictError
 
-    record_id = create_record(event, "contact", {"firstname": "John"})
+    with pytest.raises(HubSpotConflictError) as exc_info:
+        create_record(event, "contact", {"firstname": "John"})
 
-    assert record_id == "98765"
+    assert exc_info.value.existing_id == "98765"
+    assert exc_info.value.status_code == 409
     mock_post.assert_called_once()
-    mock_patch.assert_called_once()
-
-    args, kwargs = mock_patch.call_args
-    assert "/crm/v3/objects/contacts/98765" in args[0]
 
 
 @pytest.mark.django_db

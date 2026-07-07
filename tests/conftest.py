@@ -1,5 +1,5 @@
 import pytest
-from eventyay.base.models import Event, Organizer, Team, User
+from eventyay.base.models import Event, Organizer, Team, User, Order
 from django.utils.timezone import now
 from datetime import timedelta
 
@@ -45,3 +45,15 @@ def logged_in_organizer_client(client, user, organizer, event):
     team.members.add(user)
     client.force_login(user)
     return client
+
+
+@pytest.fixture
+def order(event):
+    return Order.objects.create(
+        event=event,
+        code="TEST1",
+        status="n",
+        email="dummy@dummy.dummy",
+        total=10.00,
+        locale="en",
+    )

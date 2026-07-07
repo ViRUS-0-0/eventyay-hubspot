@@ -6,6 +6,7 @@ from hubspot.views import (
     EventHubSpotFieldMappingView,
     EventHubSpotSettingsView,
     EventHubSpotLogView,
+    EventHubSpotSyncMappingView,
 )
 
 urlpatterns = [
@@ -33,6 +34,11 @@ urlpatterns = [
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/mapping/<int:mapping_id>/fields/",
         EventHubSpotFieldMappingView.as_view(),
         name="mapping_fields",
+    ),
+    path(
+        "control/event/<orgslug:organizer>/<slug:event>/hubspot/sync_mapping/",
+        EventHubSpotSyncMappingView.as_view(),
+        name="sync_mapping",
     ),
     path(
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/logs/",

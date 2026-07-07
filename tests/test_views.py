@@ -2,7 +2,9 @@ import pytest
 from django.urls import reverse
 from unittest import mock
 from django_scopes import scope
-from hubspot.models import HubSpotOAuthToken
+from hubspot.models import HubSpotOAuthToken, HubSpotProperty, HubSpotPropertySyncState
+import uuid
+import requests
 
 
 @pytest.mark.django_db
@@ -75,9 +77,6 @@ def test_hubspot_disconnect_view_connected(
     mock_response.ok = True
     mock_delete.return_value = mock_response
 
-    from hubspot.models import HubSpotProperty, HubSpotPropertySyncState
-    import uuid
-
     with scope(organizer=event.organizer):
         batch = uuid.uuid4()
         HubSpotProperty.objects.create(
@@ -117,7 +116,6 @@ def test_hubspot_disconnect_view_revoke_failure_still_clears(
         )
 
     # Simulate a network error or 500 from HubSpot
-    import requests
 
     mock_delete.side_effect = requests.RequestException("Timeout")
 
