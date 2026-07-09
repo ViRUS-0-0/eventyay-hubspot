@@ -129,6 +129,8 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
                 settings_form.save()
                 messages.success(request, _("Settings saved."))
                 return redirect(request.path)
+        else:
+            return redirect(request.path)
 
         return self.render_to_response(
             self.get_context_data(formset=formset, settings_form=settings_form)

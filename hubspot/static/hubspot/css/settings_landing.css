@@ -85,3 +85,12 @@
     font-weight: bold;
     font-size: 15px;
 }
+
+.sync-help-text {
+    margin-top: 5px;
+}
+
+.sync-submit-group,
+.activity-view-all {
+    margin-top: 15px;
+}

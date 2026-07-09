@@ -60,15 +60,23 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
         if not HubSpotOAuthToken.objects.filter(event=order.event).exists():
             return
         if not settings.auto_sync_enabled:
-            SyncLog.objects.create(
-                event=order.event,
-                action=SyncAction.UPDATE,
-                direction=SyncDirection.PUSH,
-                status=SyncStatus.PENDING,
-                detail={
-                    "message": f"Auto-sync disabled, sync pending for order {order.code}"
-                },
-            )
+
+            def log_pending():
+                # Deduplicate multiple signals for the same order within a short window
+                cache_key = f"hubspot_sync_enqueued_{order.id}"
+                if cache.add(cache_key, "1", timeout=5):
+                    with scope(organizer=order.event.organizer):
+                        SyncLog.objects.create(
+                            event=order.event,
+                            action=SyncAction.UPDATE,
+                            direction=SyncDirection.PUSH,
+                            status=SyncStatus.PENDING,
+                            detail={
+                                "message": f"Auto-sync disabled, sync pending for order {order.code}"
+                            },
+                        )
+
+            transaction.on_commit(log_pending)
             return
 
     def enqueue_task():

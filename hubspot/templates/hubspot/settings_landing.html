@@ -152,10 +152,10 @@
                         <span class="slider"></span>
                     </label>
                 </div>
-                <p class="help-block" style="margin-top: 5px;">
+                <p class="help-block sync-help-text">
                     {% translate "If disabled, new orders are logged as pending and you can sync them manually via the manual sync below." %}
                 </p>
-                <div class="text-right" style="margin-top: 15px;">
+                <div class="text-right sync-submit-group">
                     <button type="submit" class="btn btn-primary">{% translate "Save Settings" %}</button>
                 </div>
             </form>
@@ -204,7 +204,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="text-center" style="margin-top: 15px;">
+                <div class="text-center activity-view-all">
                     <a href="{% url 'plugins:hubspot:logs' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-default">
                         {% translate "View all activity" %}
                     </a>
