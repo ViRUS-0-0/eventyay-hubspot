@@ -294,9 +294,11 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
     with scope(organizer=event.organizer):
         settings = HubSpotEventSettings.objects.filter(event=event).first()
         if not settings or not settings.sync_enabled:
+            logger.info(f"Sync is disabled for event {event_id}. Skipping.")
             return
 
         if not get_valid_hubspot_token(event):
+            logger.info(f"No valid HubSpot token for event {event_id}. Skipping.")
             return
 
         try:
@@ -313,6 +315,11 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
             return
 
         active_mappings = ObjectTypeMapping.objects.filter(event=event)
+        if not active_mappings.exists():
+            logger.info(
+                f"No active object mappings found for event {event_id}. Skipping sync for order {order_id}."
+            )
+            return
 
         try:
             for object_mapping_config in active_mappings:
@@ -554,5 +561,12 @@ def sync_all_mappings_task(self, event_id: int):
             Order.objects.filter(event_id=event_id).values_list("id", flat=True)
         )
 
+    if not order_ids:
+        logger.info(f"No orders found for event {event_id}. Nothing to sync.")
+        return
+
+    logger.info(
+        f"Found {len(order_ids)} orders for event {event_id}. Queuing sync tasks."
+    )
     for order_id in order_ids:
         sync_order_to_hubspot.apply_async(args=[order_id, event_id], countdown=0)

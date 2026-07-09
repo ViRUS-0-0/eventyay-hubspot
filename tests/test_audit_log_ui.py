@@ -253,3 +253,36 @@ def test_hubspot_logs_view_order_and_position_synced_formatting(
     # The position synced log text should contain position representation, order code and attendee name
     expected_pos_message = "Order Position #1 – Standard Ticket for Order ABCDE (John Doe) synced to HubSpot successfully"
     assert expected_pos_message in content
+
+
+@pytest.mark.django_db
+def test_hubspot_logs_view_auto_sync_actions(
+    logged_in_organizer_client, organizer, event, settings
+):
+    settings.SITE_URL = "https://testserver"
+
+    with scope(organizer=event.organizer):
+        AuditLog.objects.create(
+            organizer=event.organizer,
+            event=event,
+            action=AuditAction.AUTO_SYNC_ENABLED,
+            ip_address="127.0.0.1",
+        )
+        AuditLog.objects.create(
+            organizer=event.organizer,
+            event=event,
+            action=AuditAction.AUTO_SYNC_DISABLED,
+            ip_address="127.0.0.1",
+        )
+
+    url = reverse(
+        "plugins:hubspot:logs",
+        kwargs={"organizer": organizer.slug, "event": event.slug},
+    )
+
+    response = logged_in_organizer_client.get(url)
+    assert response.status_code == 200
+    content = response.content.decode()
+
+    assert "Automatic sync was enabled" in content
+    assert "Automatic sync was disabled" in content

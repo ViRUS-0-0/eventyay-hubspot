@@ -4,7 +4,18 @@ from eventyay.base.models import Event
 from eventyay.control.forms.filter import FilterForm
 from eventyay.base.forms.widgets import DatePickerWidget
 
-from .models import ObjectTypeMapping, HubSpotFieldMapping, SyncMode
+from .models import (
+    HubSpotEventSettings,
+    ObjectTypeMapping,
+    HubSpotFieldMapping,
+    SyncMode,
+)
+
+
+class HubSpotEventSettingsForm(forms.ModelForm):
+    class Meta:
+        model = HubSpotEventSettings
+        fields = ["auto_sync_enabled"]
 
 
 class HubSpotLogFilterForm(FilterForm):

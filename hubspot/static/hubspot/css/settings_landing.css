@@ -25,3 +25,72 @@
 .mapping-submit-group {
     margin-top: 15px;
 }
+
+.hubspot-toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    margin: 0;
+    vertical-align: middle;
+}
+.hubspot-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.hubspot-toggle .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    -webkit-transition: .2s;
+    transition: .2s;
+    border-radius: 24px;
+}
+.hubspot-toggle .slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    -webkit-transition: .2s;
+    transition: .2s;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.hubspot-toggle input:checked + .slider {
+    background-color: #337ab7;
+}
+.hubspot-toggle input:focus + .slider {
+    box-shadow: 0 0 1px #337ab7;
+}
+.hubspot-toggle input:checked + .slider:before {
+    -webkit-transform: translateX(20px);
+    -ms-transform: translateX(20px);
+    transform: translateX(20px);
+}
+.toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+.toggle-label-text {
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.sync-help-text {
+    margin-top: 5px;
+}
+
+.sync-submit-group,
+.activity-view-all {
+    margin-top: 15px;
+}

@@ -24,6 +24,7 @@ from django.forms import modelformset_factory
 from .forms import (
     HubSpotLogFilterForm,
     BaseHubSpotFieldMappingFormSet,
+    HubSpotEventSettingsForm,
     HubSpotFieldMappingForm,
     ObjectTypeMappingFormSet,
 )
@@ -67,6 +68,12 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
             queryset=ObjectTypeMapping.objects.filter(event=self.request.event),
         )
 
+    def _get_settings_form(self, data=None):
+        settings, _ = HubSpotEventSettings.objects.get_or_create(
+            event=self.request.event
+        )
+        return HubSpotEventSettingsForm(data, instance=settings)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         try:
@@ -76,25 +83,58 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
             context["hub_id"] = token.hub_id
         except HubSpotOAuthToken.DoesNotExist:
             context["is_connected"] = False
+
         if "formset" not in context:
             context["formset"] = self._get_formset()
+
+        if "settings_form" not in context:
+            context["settings_form"] = self._get_settings_form()
 
         context["recent_activities"] = get_hubspot_activity_logs(self.request.event)[:5]
         return context
 
     def post(self, request, *args, **kwargs):
-        formset = self._get_formset(request.POST)
-        if formset.is_valid():
-            formset.save()
-            AuditLog.objects.create(
-                organizer=request.event.organizer,
-                event=request.event,
-                action=AuditAction.MAPPING_UPDATED,
-                ip_address=get_client_ip(request),
-            )
-            messages.success(request, _("Object mappings saved."))
+        form_type = request.POST.get("form_type", "mappings")
+
+        if form_type == "mappings":
+            formset = self._get_formset(request.POST)
+            settings_form = self._get_settings_form()
+            if formset.is_valid():
+                formset.save()
+                AuditLog.objects.create(
+                    organizer=request.event.organizer,
+                    event=request.event,
+                    action=AuditAction.MAPPING_UPDATED,
+                    ip_address=get_client_ip(request),
+                )
+                messages.success(request, _("Object mappings saved."))
+                return redirect(request.path)
+        elif form_type == "settings":
+            formset = self._get_formset()
+            settings_form = self._get_settings_form(request.POST)
+            if settings_form.is_valid():
+                if "auto_sync_enabled" in settings_form.changed_data:
+                    is_enabled = settings_form.cleaned_data["auto_sync_enabled"]
+                    action = (
+                        AuditAction.AUTO_SYNC_ENABLED
+                        if is_enabled
+                        else AuditAction.AUTO_SYNC_DISABLED
+                    )
+                    AuditLog.objects.create(
+                        organizer=request.event.organizer,
+                        event=request.event,
+                        action=action,
+                        ip_address=get_client_ip(request),
+                    )
+                settings_form.save()
+                messages.success(request, _("Settings saved."))
+                return redirect(request.path)
+        else:
             return redirect(request.path)
-        return self.render_to_response(self.get_context_data(formset=formset))
+
+        return self.render_to_response(
+            self.get_context_data(formset=formset, settings_form=settings_form)
+        )
 
 
 class EventHubSpotConnectView(EventPermissionRequiredMixin, View):
@@ -248,6 +288,10 @@ class EventHubSpotCallbackView(View):
                 },
             )
 
+            HubSpotEventSettings.objects.update_or_create(
+                event=event, defaults={"sync_enabled": True}
+            )
+
             SyncLog.objects.create(
                 event=event,
                 action=SyncAction.CONNECT,
@@ -306,6 +350,9 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
         # Always clear local credentials
         with scope(organizer=request.event.organizer):
             token.delete()
+            HubSpotEventSettings.objects.filter(event=request.event).update(
+                sync_enabled=False
+            )
             SyncLog.objects.create(
                 event=request.event,
                 action=SyncAction.DISCONNECT,

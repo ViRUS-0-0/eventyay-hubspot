@@ -53,6 +53,7 @@
 
             <form method="post" id="mapping-form">
                 {% csrf_token %}
+                <input type="hidden" name="form_type" value="mappings">
                 {{ formset.management_form }}
 
                 {% if formset.non_form_errors %}
@@ -140,16 +141,40 @@
             <h3 class="panel-title">{% translate "Sync Mapping" %}</h3>
         </div>
         <div class="panel-body">
-            <p>{% translate "If you have records that were created before you connected HubSpot or before you set up your object mappings, you can sync them all manually here." %}</p>
-            <p class="text-muted">
-                <i class="fa fa-info-circle"></i> {% translate "This action runs in the background and might take some time depending on the amount of data. Because of the 'Fill if new' rule, it is safe to run this multiple times." %}
-            </p>
-            <form method="post" action="{% url "plugins:hubspot:sync_mapping" organizer=request.event.organizer.slug event=request.event.slug %}">
+            <form method="post">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-default">
-                    <i class="fa fa-refresh"></i> {% translate "Sync all mappings to HubSpot" %}
-                </button>
+                <input type="hidden" name="form_type" value="settings">
+
+                <div class="toggle-wrapper">
+                    <span class="toggle-label-text">{% translate "Sync automatically" %}</span>
+                    <label class="hubspot-toggle">
+                        {{ settings_form.auto_sync_enabled }}
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <p class="help-block sync-help-text">
+                    {% translate "If disabled, new orders are logged as pending and you can sync them manually via the manual sync below." %}
+                </p>
+                <div class="text-right sync-submit-group">
+                    <button type="submit" class="btn btn-primary">{% translate "Save Settings" %}</button>
+                </div>
             </form>
+
+            {% if not settings_form.auto_sync_enabled.value %}
+            <div id="manual-sync-section">
+                <hr>
+                <p>{% translate "If you have records that were created before you connected HubSpot or before you set up your object mappings, you can sync them all manually here." %}</p>
+                <p class="text-muted">
+                    <i class="fa fa-info-circle"></i> {% translate "This action runs in the background and might take some time depending on the amount of data. Because of the 'Fill if new' rule, it is safe to run this multiple times." %}
+                </p>
+                <form method="post" action="{% url "plugins:hubspot:sync_mapping" organizer=request.event.organizer.slug event=request.event.slug %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-default">
+                        <i class="fa fa-refresh"></i> {% translate "Sync all mappings to HubSpot" %}
+                    </button>
+                </form>
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -179,7 +204,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="text-center" style="margin-top: 15px;">
+                <div class="text-center activity-view-all">
                     <a href="{% url 'plugins:hubspot:logs' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-default">
                         {% translate "View all activity" %}
                     </a>
