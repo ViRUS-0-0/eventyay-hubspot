@@ -94,3 +94,18 @@
 .activity-view-all {
     margin-top: 15px;
 }
+
+.sync-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.sync-status-banner span {
+    flex-grow: 1;
+}
+
+.sync-status-banner .btn {
+    margin-left: auto;
+}

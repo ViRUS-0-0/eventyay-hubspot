@@ -1,0 +1,146 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n static bootstrap3 %}
+
+{% block title %}{% translate "HubSpot Sync Problems" %} :: {% endblock %}
+
+{% block content %}
+    <h1>
+        <a href="{% url 'plugins:hubspot:hubspot' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-link btn-lg">
+            <i class="fa fa-arrow-left"></i>
+        </a>
+        {% translate "HubSpot Sync Problems" %}
+    </h1>
+
+    <div class="row filter-form">
+        <form class="" action="" method="get">
+            <div class="col-md-2 col-xs-6">
+                {% bootstrap_field filter_form.status layout='inline' %}
+            </div>
+            <div class="col-md-2 col-xs-6">
+                {% bootstrap_field filter_form.query layout='inline' %}
+            </div>
+            <div class="col-md-2 col-xs-6">
+                {% bootstrap_field filter_form.date_from layout='inline' %}
+            </div>
+            <div class="col-md-2 col-xs-6">
+                {% bootstrap_field filter_form.date_to layout='inline' %}
+            </div>
+            <div class="col-md-4 col-xs-12">
+                <div class="filter-actions">
+                    <button type="submit" class="btn btn-primary" name="_filter" value="1">
+                        <i class="fa fa-filter"></i> {% translate "Filter" %}
+                    </button>
+                    <a href="?" class="btn btn-default btn-clear-filter">
+                        <i class="fa fa-times"></i> {% translate "Clear" %}
+                    </a>
+                    <button type="submit" form="bulk-retry-form" class="btn btn-success" id="btn-retry-selected" disabled>
+                        <i class="fa fa-refresh"></i> {% translate "Retry selected" %}
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    {% if has_failed %}
+    <div class="row" style="margin-bottom: 20px;">
+        <div class="col-md-12 text-right">
+            <form method="post" action="{% url 'plugins:hubspot:sync_retry_all' organizer=request.event.organizer.slug event=request.event.slug %}" style="display:inline-block;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-default">
+                    <i class="fa fa-refresh"></i> {% translate "Retry all failed" %}
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="panel panel-default">
+        <div class="panel-body" data-ajax-results-region>
+            {% if records %}
+                <form method="post" id="bulk-retry-form" action="{% url 'plugins:hubspot:sync_retry_bulk' organizer=request.event.organizer.slug event=request.event.slug %}">
+                    {% csrf_token %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <input type="checkbox" data-toggle-table />
+                                    </th>
+                                    <th>{% translate "Record" %}</th>
+                                    <th>{% translate "Status" %}</th>
+                                    <th>{% translate "Mapping Type" %}</th>
+                                    <th>{% translate "Last Attempt" %}</th>
+                                    <th>{% translate "Error Message" %}</th>
+                                    <th>{% translate "Actions" %}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in records %}
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" name="records" value="{{ record.order_id }}" />
+                                        </td>
+                                        <td>
+                                            <strong>{{ record.code }}</strong><br>
+                                            <small class="text-muted">{{ record.obj_type }}</small>
+                                        </td>
+                                        <td>
+                                            {% if record.status == 'failed' %}
+                                                <span class="label label-danger">{% translate "Failed" %}</span>
+                                            {% else %}
+                                                <span class="label label-warning">{% translate "Pending" %}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ record.hubspot_type|title }}</td>
+                                        <td>
+                                            {% if record.last_attempted_at %}
+                                                {{ record.last_attempted_at|date:"SHORT_DATETIME_FORMAT" }}
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if record.error_readable %}
+                                                <div class="text-danger" style="max-width: 300px; word-wrap: break-word;">
+                                                    <strong>{{ record.error_readable }}</strong>
+                                                    <br>
+                                                    <small class="text-muted" title="{{ record.error_message }}">
+                                                        {% translate "Hover for raw error" %}
+                                                    </small>
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <button type="submit" formaction="{% url 'plugins:hubspot:sync_retry' organizer=request.event.organizer.slug event=request.event.slug order_id=record.order_id %}" class="btn btn-default btn-sm" title="{% translate 'Retry sync' %}">
+                                                    <i class="fa fa-refresh"></i>
+                                                </button>
+                                                
+                                                {% if record.status == 'failed' and record.log_id %}
+                                                <button type="submit" formaction="{% url 'plugins:hubspot:sync_dismiss' organizer=request.event.organizer.slug event=request.event.slug log_id=record.log_id %}" class="btn btn-default btn-sm" title="{% translate 'Dismiss error' %}">
+                                                    <i class="fa fa-times"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </form>
+                {% include "pretixcontrol/pagination.html" %}
+            {% else %}
+                <div class="text-center" style="padding: 40px 0;">
+                    <i class="fa fa-check-circle text-success" style="font-size: 48px; margin-bottom: 20px;"></i>
+                    <h3>{% translate "Everything is synced" %}</h3>
+                    <p class="text-muted">{% translate "There are no pending or failed sync records to display." %}</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <script type="text/javascript" src="{% static 'hubspot/js/sync_problems.js' %}"></script>
+{% endblock %}

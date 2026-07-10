@@ -12,6 +12,33 @@ from .models import (
 )
 
 
+class SyncProblemsFilterForm(FilterForm):
+    status = forms.ChoiceField(
+        label=_("Status"),
+        choices=(
+            ("", _("All Problems")),
+            ("pending", _("Pending Only")),
+            ("failed", _("Failed Only")),
+        ),
+        required=False,
+    )
+    query = forms.CharField(
+        label=_("Search orders/errors"),
+        max_length=255,
+        required=False,
+    )
+    date_from = forms.DateField(
+        label=_("Last attempt from"),
+        required=False,
+        widget=DatePickerWidget,
+    )
+    date_to = forms.DateField(
+        label=_("Last attempt to"),
+        required=False,
+        widget=DatePickerWidget,
+    )
+
+
 class HubSpotEventSettingsForm(forms.ModelForm):
     class Meta:
         model = HubSpotEventSettings

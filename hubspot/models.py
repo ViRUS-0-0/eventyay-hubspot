@@ -19,6 +19,7 @@ class SyncAction(models.TextChoices):
     DISCONNECT = "disconnect"
     TOKEN_REFRESH = "token_refresh"
     REFRESH_FAILED = "refresh_failed"
+    DISMISS = "dismiss"
 
 
 class SyncDirection(models.TextChoices):
