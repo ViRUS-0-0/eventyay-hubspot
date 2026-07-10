@@ -314,6 +314,12 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
         except Order.DoesNotExist:
             return
 
+        if order.status != Order.STATUS_PAID:
+            logger.info(
+                f"Order {order_id} is not paid (status: {order.status}). Skipping sync."
+            )
+            return
+
         active_mappings = ObjectTypeMapping.objects.filter(event=event)
         if not active_mappings.exists():
             logger.info(
@@ -558,7 +564,9 @@ def sync_all_mappings_task(self, event_id: int):
     """
     with scopes_disabled():
         order_ids = list(
-            Order.objects.filter(event_id=event_id).values_list("id", flat=True)
+            Order.objects.filter(
+                event_id=event_id, status=Order.STATUS_PAID
+            ).values_list("id", flat=True)
         )
 
     if not order_ids:

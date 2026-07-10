@@ -99,6 +99,8 @@ def test_sync_order_success(mock_create, mock_event, object_mapping, order):
         sync_batch="00000000-0000-0000-0000-000000000000",
     )
 
+    order.status = "p"
+    order.save()
     sync_order_to_hubspot(order.id, mock_event.id)
 
     mock_create.assert_called_once()
@@ -183,6 +185,7 @@ def test_sync_modes(mock_update, mock_get_record, mock_event, object_mapping, or
     order.email = "test@example.com"
     order.total = 100.0
     order.locale = "en"
+    order.status = "p"
     order.save()
 
     sync_order_to_hubspot(order.id, mock_event.id)
@@ -249,6 +252,7 @@ def test_sync_fill_if_empty(
     )
 
     order.phone = "12345"
+    order.status = "p"
     order.save()
 
     InvoiceAddress.objects.create(order=order, company="NewCorp")
@@ -299,6 +303,9 @@ def test_transient_error_retries(
         sync_mode=SyncMode.IDENTIFIER,
     )
 
+    order.status = "p"
+    order.save()
+
     with pytest.raises(Retry):
         sync_order_to_hubspot(order.id, mock_event.id)
 
@@ -331,6 +338,8 @@ def test_permanent_error_no_retry(mock_create, mock_event, object_mapping, order
     )
 
     # Should not raise Retry, but should silently record failure
+    order.status = "p"
+    order.save()
     sync_order_to_hubspot(order.id, mock_event.id)
 
     logs = SyncLog.objects.filter(event=mock_event)
