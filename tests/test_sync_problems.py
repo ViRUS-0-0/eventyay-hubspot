@@ -48,6 +48,9 @@ def setup_hubspot(event):
 def test_sync_status_banner_pending_count(
     logged_in_organizer_client, event, order, setup_hubspot, settings
 ):
+    with scope(organizer=event.organizer):
+        order.status = Order.STATUS_PAID
+        order.save()
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:hubspot",
@@ -63,6 +66,9 @@ def test_sync_status_banner_pending_count(
 def test_sync_status_banner_failed_count(
     logged_in_organizer_client, event, order, setup_hubspot, settings
 ):
+    with scope(organizer=event.organizer):
+        order.status = Order.STATUS_PAID
+        order.save()
     settings.SITE_URL = "https://testserver"
     order_ct = ContentType.objects.get_for_model(Order)
     with scope(organizer=event.organizer):
@@ -98,6 +104,9 @@ def test_sync_status_banner_failed_count(
 def test_sync_problems_list_view(
     logged_in_organizer_client, event, order, setup_hubspot, settings
 ):
+    with scope(organizer=event.organizer):
+        order.status = Order.STATUS_PAID
+        order.save()
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:sync_problems",
@@ -115,6 +124,9 @@ def test_sync_problems_list_view(
 def test_dismiss_sync_record(
     logged_in_organizer_client, event, order, setup_hubspot, settings
 ):
+    with scope(organizer=event.organizer):
+        order.status = Order.STATUS_PAID
+        order.save()
     settings.SITE_URL = "https://testserver"
     order_ct = ContentType.objects.get_for_model(Order)
     with scope(organizer=event.organizer):
