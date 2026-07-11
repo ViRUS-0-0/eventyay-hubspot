@@ -9,7 +9,6 @@ from django.contrib import messages
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.core.exceptions import PermissionDenied
-from django.db.models import Max
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView, TemplateView, View
@@ -34,7 +33,6 @@ from .models import (
     AuditLog,
     HubSpotEventSettings,
     HubSpotFieldMapping,
-    HubSpotObjectMapping,
     HubSpotOAuthToken,
     ObjectTypeMapping,
     HubSpotProperty,
@@ -48,6 +46,11 @@ from .field_discovery import get_available_fields
 from .services import get_hubspot_properties, sync_hubspot_properties
 from .utils import get_hubspot_activity_logs
 from .tasks import sync_all_mappings_task, sync_order_to_hubspot
+from .sync_logic import (
+    get_sync_status_counts,
+    get_pending_sync_records,
+    get_failed_sync_records,
+)
 
 
 def get_client_ip(request):
@@ -96,7 +99,7 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
 
         # Sync status counts for the notification banner
         if context["is_connected"]:
-            pending_count, failed_count = _get_sync_status_counts(self.request.event)
+            pending_count, failed_count = get_sync_status_counts(self.request.event)
             context["pending_count"] = pending_count
             context["failed_count"] = failed_count
 
@@ -704,203 +707,6 @@ class EventHubSpotSyncMappingView(EventPermissionRequiredMixin, View):
         return redirect(settings_url)
 
 
-def _get_active_mappings_with_fields(event):
-    """Yields (mapping, content_type) for mappings that have valid fields configured."""
-    active_mappings = ObjectTypeMapping.objects.filter(event=event)
-    order_ct = ContentType.objects.get_for_model(Order)
-    position_ct = ContentType.objects.get_for_model(OrderPosition)
-
-    for mapping in active_mappings:
-        content_type = (
-            order_ct if mapping.eventyay_object_type == "order" else position_ct
-        )
-        has_valid_fields = (
-            HubSpotFieldMapping.objects.filter(
-                event=event,
-                content_type=content_type,
-                hubspot_object_type=mapping.hubspot_object_type,
-                is_active=True,
-            )
-            .exclude(eventyay_field="")
-            .exclude(hubspot_property="")
-            .exists()
-        )
-        if has_valid_fields:
-            yield mapping, content_type
-
-
-def _get_unsynced_querysets(event):
-    """
-    Returns a list of tuples: (mapping, content_type, unsynced_queryset)
-    """
-    results = []
-    for mapping, content_type in _get_active_mappings_with_fields(event):
-        synced_ids = set(
-            HubSpotObjectMapping.objects.filter(
-                event=event,
-                content_type=content_type,
-                hubspot_object_type=mapping.hubspot_object_type,
-                last_synced_at__gte=mapping.updated_at,
-            ).values_list("object_id", flat=True)
-        )
-
-        if mapping.eventyay_object_type == "order":
-            qs = Order.objects.filter(event=event, status=Order.STATUS_PAID).exclude(
-                id__in=synced_ids
-            )
-            results.append((mapping, content_type, qs))
-        elif mapping.eventyay_object_type == "order_position":
-            qs = (
-                OrderPosition.objects.filter(
-                    order__event=event, order__status=Order.STATUS_PAID
-                )
-                .select_related("order")
-                .exclude(id__in=synced_ids)
-            )
-            results.append((mapping, content_type, qs))
-
-    return results
-
-
-def _get_unresolved_failed_logs(event):
-    """
-    Yields dicts containing 'object_mapping_id' and 'last_failure' for failed syncs
-    that have not been successfully synced or dismissed since their last failure.
-    """
-    failed_logs = (
-        SyncLog.objects.filter(
-            event=event,
-            status=SyncStatus.FAILED,
-            object_mapping__isnull=False,
-        )
-        .values("object_mapping_id")
-        .annotate(last_failure=Max("created_at"))
-    )
-
-    for entry in failed_logs:
-        has_resolution = (
-            SyncLog.objects.filter(
-                event=event,
-                object_mapping_id=entry["object_mapping_id"],
-                created_at__gt=entry["last_failure"],
-                status=SyncStatus.SUCCESS,
-            ).exists()
-            or SyncLog.objects.filter(
-                event=event,
-                object_mapping_id=entry["object_mapping_id"],
-                created_at__gt=entry["last_failure"],
-                action=SyncAction.DISMISS,
-            ).exists()
-        )
-        if not has_resolution:
-            yield entry
-
-
-def _get_sync_status_counts(event):
-    """Return (pending_count, failed_count) for the given event."""
-    pending_count = sum(qs.count() for _, _, qs in _get_unsynced_querysets(event))
-    failed_count = sum(1 for _ in _get_unresolved_failed_logs(event))
-
-    return pending_count, failed_count
-
-
-def _get_failed_sync_records(event):
-    """Return a list of dicts describing each failed sync record for the event.
-
-    Each dict contains: object_mapping_id, order_code, hubspot_object_type,
-    last_attempted_at, error_message, object_mapping (model instance).
-    """
-    records = []
-    for entry in _get_unresolved_failed_logs(event):
-        # Get the actual failure log for details
-        log = (
-            SyncLog.objects.filter(
-                event=event,
-                object_mapping_id=entry["object_mapping_id"],
-                status=SyncStatus.FAILED,
-            )
-            .select_related("object_mapping")
-            .order_by("-created_at")
-            .first()
-        )
-        if not log or not log.object_mapping:
-            continue
-
-        om = log.object_mapping
-        # Resolve the source object to get a display code and accurate order_id
-        try:
-            source_obj = om.content_object
-            if isinstance(source_obj, Order):
-                code = source_obj.code
-                obj_type = _("Order")
-                actual_order_id = om.object_id
-            elif isinstance(source_obj, OrderPosition):
-                code = f"{source_obj.order.code}-{source_obj.positionid}"
-                obj_type = _("Position")
-                actual_order_id = source_obj.order_id
-            else:
-                code = str(om.object_id)
-                obj_type = str(om.content_type)
-                actual_order_id = om.object_id
-        except Exception:
-            code = str(om.object_id)
-            obj_type = str(om.content_type)
-            actual_order_id = om.object_id
-
-        error = log.detail.get("error", "") if isinstance(log.detail, dict) else ""
-
-        records.append(
-            {
-                "log_id": log.id,
-                "object_mapping_id": om.id,
-                "code": code,
-                "obj_type": obj_type,
-                "hubspot_type": om.hubspot_object_type,
-                "last_attempted_at": log.created_at,
-                "error_message": error,
-                "order_id": actual_order_id,
-                "content_type_id": om.content_type_id,
-                "status": "failed",
-            }
-        )
-
-    return records
-
-
-def _get_pending_sync_records(event):
-    """Return a list of dicts for orders/positions missing a HubSpotObjectMapping."""
-    records = []
-    for mapping, content_type, qs in _get_unsynced_querysets(event):
-        for obj in qs:
-            if mapping.eventyay_object_type == "order":
-                code = obj.code
-                obj_type = _("Order")
-                actual_order_id = obj.id
-            elif mapping.eventyay_object_type == "order_position":
-                code = f"{obj.order.code}-{obj.positionid}"
-                obj_type = _("Position")
-                actual_order_id = obj.order_id
-            else:
-                continue
-
-            records.append(
-                {
-                    "log_id": None,
-                    "object_mapping_id": None,
-                    "code": code,
-                    "obj_type": obj_type,
-                    "hubspot_type": mapping.hubspot_object_type,
-                    "last_attempted_at": None,
-                    "error_message": "",
-                    "order_id": actual_order_id,
-                    "content_type_id": content_type.id,
-                    "status": "pending",
-                }
-            )
-
-    return records
-
-
 class SyncProblemsView(EventPermissionRequiredMixin, PaginationMixin, ListView):
     """Lists all orders/positions that are either unsynced or have failed syncs."""
 
@@ -931,9 +737,9 @@ class SyncProblemsView(EventPermissionRequiredMixin, PaginationMixin, ListView):
 
         records = []
         if status_filter != "failed":
-            records.extend(_get_pending_sync_records(self.request.event))
+            records.extend(get_pending_sync_records(self.request.event))
         if status_filter != "pending":
-            records.extend(_get_failed_sync_records(self.request.event))
+            records.extend(get_failed_sync_records(self.request.event))
 
         # Filter by query
         if query:
@@ -996,8 +802,7 @@ class SyncProblemsView(EventPermissionRequiredMixin, PaginationMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["filter_form"] = getattr(self, "filter_form", None)
         context["has_failed"] = any(
-            r["status"] == "failed"
-            for r in _get_failed_sync_records(self.request.event)
+            r["status"] == "failed" for r in get_failed_sync_records(self.request.event)
         )
         return context
 
@@ -1028,7 +833,7 @@ class RetryAllFailedView(EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
     def post(self, request, *args, **kwargs):
-        failed_records = _get_failed_sync_records(request.event)
+        failed_records = get_failed_sync_records(request.event)
         order_ids = {r["order_id"] for r in failed_records}
         for order_id in order_ids:
             sync_order_to_hubspot.apply_async(args=[order_id, request.event.id])
