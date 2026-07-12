@@ -1,5 +1,6 @@
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Max
+from django.core.cache import cache
+from django.db.models import Max, Q
 from django.utils.translation import gettext_lazy as _
 from eventyay.base.models import Order, OrderPosition
 
@@ -76,41 +77,46 @@ def get_unresolved_failed_logs(event):
     Yields dicts containing 'object_mapping_id' and 'last_failure' for failed syncs
     that have not been successfully synced or dismissed since their last failure.
     """
-    failed_logs = (
-        SyncLog.objects.filter(
-            event=event,
-            status=SyncStatus.FAILED,
-            object_mapping__isnull=False,
-        )
+    logs = (
+        SyncLog.objects.filter(event=event, object_mapping__isnull=False)
         .values("object_mapping_id")
-        .annotate(last_failure=Max("created_at"))
+        .annotate(
+            last_failure=Max("created_at", filter=Q(status=SyncStatus.FAILED)),
+            last_success=Max("created_at", filter=Q(status=SyncStatus.SUCCESS)),
+            last_dismiss=Max("created_at", filter=Q(action=SyncAction.DISMISS)),
+        )
     )
 
-    for entry in failed_logs:
-        has_resolution = (
-            SyncLog.objects.filter(
-                event=event,
-                object_mapping_id=entry["object_mapping_id"],
-                created_at__gt=entry["last_failure"],
-                status=SyncStatus.SUCCESS,
-            ).exists()
-            or SyncLog.objects.filter(
-                event=event,
-                object_mapping_id=entry["object_mapping_id"],
-                created_at__gt=entry["last_failure"],
-                action=SyncAction.DISMISS,
-            ).exists()
-        )
-        if not has_resolution:
+    for entry in logs:
+        if not entry["last_failure"]:
+            continue
+
+        res_dates = [d for d in (entry["last_success"], entry["last_dismiss"]) if d]
+        last_resolution = max(res_dates) if res_dates else None
+
+        if not last_resolution or entry["last_failure"] >= last_resolution:
             yield entry
+
+
+def clear_sync_status_cache(event):
+    """Clear the sync status counts cache for the given event."""
+    cache_key = f"hubspot_sync_counts_{event.id}"
+    cache.delete(cache_key)
 
 
 def get_sync_status_counts(event):
     """Return (pending_count, failed_count) for the given event."""
+    cache_key = f"hubspot_sync_counts_{event.id}"
+    counts = cache.get(cache_key)
+    if counts is not None:
+        return counts
+
     pending_count = sum(qs.count() for _, _, qs in get_unsynced_querysets(event))
     failed_count = sum(1 for _ in get_unresolved_failed_logs(event))
 
-    return pending_count, failed_count
+    counts = (pending_count, failed_count)
+    cache.set(cache_key, counts, 60)
+    return counts
 
 
 def get_failed_sync_records(event):
@@ -167,6 +173,7 @@ def get_failed_sync_records(event):
                 "hubspot_type": om.hubspot_object_type,
                 "last_attempted_at": log.created_at,
                 "error_message": error,
+                "error_readable": "",
                 "order_id": actual_order_id,
                 "content_type_id": om.content_type_id,
                 "status": "failed",
@@ -180,31 +187,39 @@ def get_pending_sync_records(event):
     """Return a list of dicts for orders/positions missing a HubSpotObjectMapping."""
     records = []
     for mapping, content_type, qs in get_unsynced_querysets(event):
-        for obj in qs:
-            if mapping.eventyay_object_type == "order":
-                code = obj.code
-                obj_type = _("Order")
-                actual_order_id = obj.id
-            elif mapping.eventyay_object_type == "order_position":
-                code = f"{obj.order.code}-{obj.positionid}"
-                obj_type = _("Position")
-                actual_order_id = obj.order_id
-            else:
-                continue
-
-            records.append(
-                {
-                    "log_id": None,
-                    "object_mapping_id": None,
-                    "code": code,
-                    "obj_type": obj_type,
-                    "hubspot_type": mapping.hubspot_object_type,
-                    "last_attempted_at": None,
-                    "error_message": "",
-                    "order_id": actual_order_id,
-                    "content_type_id": content_type.id,
-                    "status": "pending",
-                }
-            )
+        if mapping.eventyay_object_type == "order":
+            for obj in qs.values("id", "code"):
+                records.append(
+                    {
+                        "log_id": None,
+                        "object_mapping_id": None,
+                        "code": obj["code"],
+                        "obj_type": _("Order"),
+                        "hubspot_type": mapping.hubspot_object_type,
+                        "last_attempted_at": None,
+                        "error_message": "",
+                        "error_readable": "",
+                        "order_id": obj["id"],
+                        "content_type_id": content_type.id,
+                        "status": "pending",
+                    }
+                )
+        elif mapping.eventyay_object_type == "order_position":
+            for obj in qs.values("id", "order_id", "order__code", "positionid"):
+                records.append(
+                    {
+                        "log_id": None,
+                        "object_mapping_id": None,
+                        "code": f"{obj['order__code']}-{obj['positionid']}",
+                        "obj_type": _("Position"),
+                        "hubspot_type": mapping.hubspot_object_type,
+                        "last_attempted_at": None,
+                        "error_message": "",
+                        "error_readable": "",
+                        "order_id": obj["order_id"],
+                        "content_type_id": content_type.id,
+                        "status": "pending",
+                    }
+                )
 
     return records

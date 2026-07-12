@@ -50,6 +50,7 @@ from .sync_logic import (
     get_sync_status_counts,
     get_pending_sync_records,
     get_failed_sync_records,
+    clear_sync_status_cache,
 )
 
 
@@ -113,6 +114,7 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
             settings_form = self._get_settings_form()
             if formset.is_valid():
                 formset.save()
+                clear_sync_status_cache(request.event)
                 AuditLog.objects.create(
                     organizer=request.event.organizer,
                     event=request.event,
@@ -144,6 +146,9 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
         else:
             return redirect(request.path)
 
+        messages.error(
+            request, _("We could not save your changes. See below for details.")
+        )
         return self.render_to_response(
             self.get_context_data(formset=formset, settings_form=settings_form)
         )
@@ -637,6 +642,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
 
             if formset.has_changed():
                 setup["mapping"].save()
+                clear_sync_status_cache(request.event)
 
             AuditLog.objects.create(
                 organizer=request.event.organizer,
@@ -871,7 +877,9 @@ class SyncRetryBulkView(EventPermissionRequiredMixin, View):
 
             if validated_order_ids:
                 for order_id in validated_order_ids:
-                    sync_order_to_hubspot.apply_async(args=[order_id, request.event.id])
+                    sync_order_to_hubspot.apply_async(
+                        args=[int(order_id), request.event.id]
+                    )
                 messages.success(
                     request,
                     _("Retry queued for %(count)d orders.")
@@ -922,7 +930,7 @@ class DismissSyncView(EventPermissionRequiredMixin, View):
             event=request.event,
             object_mapping=failed_log.object_mapping,
             action=SyncAction.DISMISS,
-            direction=SyncDirection.PUSH,
+            direction=failed_log.direction,
             status=SyncStatus.SUCCESS,
             detail={"message": "Dismissed by organizer"},
         )
