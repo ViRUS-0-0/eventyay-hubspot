@@ -944,3 +944,29 @@ class DismissSyncView(EventPermissionRequiredMixin, View):
                 },
             )
         )
+
+
+class SyncOrderNowView(EventPermissionRequiredMixin, View):
+    """Re-queues a single order for sync directly from the order detail page."""
+
+    permission = "can_change_event_settings"
+
+    def post(self, request, *args, **kwargs):
+        order_code = kwargs["order"]
+        try:
+            order = Order.objects.get(code=order_code, event=request.event)
+            sync_order_to_hubspot.apply_async(args=[order.id, request.event.id])
+            messages.success(request, _("Sync task queued."))
+        except Order.DoesNotExist:
+            messages.error(request, _("Order not found."))
+
+        return redirect(
+            reverse(
+                "control:event.order",
+                kwargs={
+                    "organizer": request.event.organizer.slug,
+                    "event": request.event.slug,
+                    "code": order_code,
+                },
+            )
+        )
