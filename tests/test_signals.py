@@ -52,7 +52,9 @@ def test_enqueue_sync_success(
 
 @pytest.mark.django_db
 @mock.patch("hubspot.signals.sync_order_to_hubspot.apply_async")
-def test_enqueue_sync_auto_sync_disabled(mock_apply, event, order):
+def test_enqueue_sync_auto_sync_disabled(
+    mock_apply, event, order, django_capture_on_commit_callbacks
+):
     from hubspot.models import SyncLog, SyncStatus
 
     HubSpotEventSettings.objects.create(
@@ -68,6 +70,7 @@ def test_enqueue_sync_auto_sync_disabled(mock_apply, event, order):
     )
 
     order.status = "p"
-    _enqueue_hubspot_sync(None, order)
+    with django_capture_on_commit_callbacks(execute=True):
+        _enqueue_hubspot_sync(None, order)
     mock_apply.assert_not_called()
     assert SyncLog.objects.filter(event=event, status=SyncStatus.PENDING).exists()

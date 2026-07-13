@@ -41,6 +41,41 @@
     </div>
 
     {% if is_connected %}
+    
+    {% if failed_count > 0 %}
+        <div class="alert alert-danger sync-status-banner">
+            <i class="fa fa-exclamation-circle fa-lg"></i>
+            <span>
+                {% blocktranslate trimmed count counter=failed_count %}
+                    1 order failed to sync to HubSpot.
+                {% plural %}
+                    {{ counter }} orders failed to sync to HubSpot.
+                {% endblocktranslate %}
+            </span>
+            <a href="{% url 'plugins:hubspot:sync_problems' organizer=request.event.organizer.slug event=request.event.slug %}?status=failed" class="btn btn-danger btn-sm pull-right">
+                {% translate "View problems" %}
+            </a>
+            <div class="clearfix"></div>
+        </div>
+    {% endif %}
+
+    {% if pending_count > 0 %}
+        <div class="alert alert-warning sync-status-banner">
+            <i class="fa fa-clock-o fa-lg"></i>
+            <span>
+                {% blocktranslate trimmed count counter=pending_count %}
+                    1 order hasn't been synced to HubSpot yet.
+                {% plural %}
+                    {{ counter }} orders haven't been synced to HubSpot yet.
+                {% endblocktranslate %}
+            </span>
+            <a href="{% url 'plugins:hubspot:sync_problems' organizer=request.event.organizer.slug event=request.event.slug %}?status=pending" class="btn btn-warning btn-sm pull-right">
+                {% translate "View pending" %}
+            </a>
+            <div class="clearfix"></div>
+        </div>
+    {% endif %}
+
     <div class="panel panel-default">
         <div class="panel-heading">
             <h3 class="panel-title">{% translate "Object mappings" %}</h3>
