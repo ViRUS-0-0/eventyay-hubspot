@@ -35,15 +35,13 @@ from .models import (
     HubSpotFieldMapping,
     HubSpotOAuthToken,
     ObjectTypeMapping,
-    HubSpotProperty,
-    HubSpotPropertySyncState,
     SyncAction,
     SyncDirection,
     SyncLog,
     SyncStatus,
 )
 from .field_discovery import get_available_fields
-from .services import get_hubspot_properties, sync_hubspot_properties
+from .services import get_hubspot_properties
 from .utils import get_hubspot_activity_logs
 from .tasks import sync_all_mappings_task, sync_order_to_hubspot
 from .sync_logic import (
@@ -385,8 +383,12 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
             )
 
         # Clear synced HubSpot properties
-        HubSpotProperty.objects.filter(event=request.event).delete()
-        HubSpotPropertySyncState.objects.filter(event=request.event).delete()
+        from django.core.cache import cache
+
+        cache.delete(f"hubspot_properties_{request.event.id}_contacts")
+        cache.delete(f"hubspot_properties_{request.event.id}_deals")
+        cache.delete(f"hubspot_properties_error_{request.event.id}_contacts")
+        cache.delete(f"hubspot_properties_error_{request.event.id}_deals")
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)
@@ -540,10 +542,17 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
                 "Could not retrieve HubSpot properties. "
                 "Please check your connection and try again."
             )
-            hubspot_properties = list(
-                HubSpotProperty.objects.filter(
-                    event=request.event, object_type=mapping.hubspot_object_type
-                ).values("key", "label", "data_type")
+            hubspot_properties = []
+
+        from django.core.cache import cache
+
+        error_key = (
+            f"hubspot_properties_error_{request.event.id}_{mapping.hubspot_object_type}"
+        )
+        if cache.get(error_key):
+            sync_error = _(
+                "HubSpot properties sync failed repeatedly. "
+                "HubSpot may be unreachable or you might need to reconnect."
             )
 
         form_kwargs = {
@@ -571,21 +580,18 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             except ObjectTypeMapping.DoesNotExist:
                 raise PermissionDenied(_("Invalid object mapping."))
 
-            try:
-                sync_hubspot_properties(request.event, mapping.hubspot_object_type)
-                messages.success(request, _("HubSpot properties synced successfully."))
-            except Exception as e:
-                logger = logging.getLogger(__name__)
-                logger.error(
-                    "Manual force_sync failed for event %s: %s", request.event.slug, e
+            rate_limit_key = f"hubspot_manual_sync_limit_{request.event.id}_{mapping.hubspot_object_type}"
+            from django.core.cache import cache
+
+            if cache.add(rate_limit_key, "1", timeout=30):
+                from .tasks import refresh_hubspot_properties_task
+
+                refresh_hubspot_properties_task.apply_async(
+                    args=[request.event.id, mapping.hubspot_object_type]
                 )
-                messages.error(
-                    request,
-                    _(
-                        "Could not sync HubSpot properties. "
-                        "Please check your connection and try again."
-                    ),
-                )
+                messages.success(request, _("Sync task started in the background."))
+            else:
+                messages.error(request, _("Please wait a moment before trying again."))
 
             clean_url = reverse(
                 "plugins:hubspot:mapping_fields",

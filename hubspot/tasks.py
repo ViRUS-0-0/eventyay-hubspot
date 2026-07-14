@@ -20,12 +20,16 @@ from .client import (
     update_record,
     get_record,
 )
-from .services import get_valid_hubspot_token
+from .services import (
+    get_valid_hubspot_token,
+    get_hubspot_properties,
+    sync_hubspot_properties,
+    HubSpotFetchError,
+)
 from .models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
     HubSpotObjectMapping,
-    HubSpotProperty,
     ObjectTypeMapping,
     SyncAction,
     SyncDirection,
@@ -223,6 +227,15 @@ def resolve_hubspot_properties(
     )
 
     properties = {}
+    try:
+        hubspot_props = get_hubspot_properties(
+            object_mapping.event, object_mapping.hubspot_object_type
+        )
+        hubspot_props_dict = {p["key"]: p for p in hubspot_props}
+    except HubSpotFetchError as e:
+        logger.error(f"Could not load HubSpot properties: {e}")
+        return {}
+
     for mapping in field_mappings:
         val = None
         # Handle dynamic questions
@@ -233,17 +246,13 @@ def resolve_hubspot_properties(
         else:
             val = _resolve_eventyay_field(obj, mapping.eventyay_field)
 
-        hs_prop = HubSpotProperty.objects.filter(
-            event=object_mapping.event,
-            object_type=object_mapping.hubspot_object_type,
-            key=mapping.hubspot_property,
-        ).first()
+        hs_prop = hubspot_props_dict.get(mapping.hubspot_property)
 
         if not hs_prop:
             # Skip properties that don't exist in HubSpot or are read-only
             continue
 
-        data_type = hs_prop.data_type
+        data_type = hs_prop["data_type"]
         val = _convert_value(val, data_type)
         if val is not None:
             properties[mapping.hubspot_property] = val
@@ -578,3 +587,47 @@ def sync_all_mappings_task(self, event_id: int):
     )
     for order_id in order_ids:
         sync_order_to_hubspot.apply_async(args=[order_id, event_id], countdown=0)
+
+
+@shared_task(bind=True, max_retries=5)
+def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
+    """
+    Background task to refresh HubSpot properties.
+    Uses exponential backoff on failure.
+    """
+    from django.core.cache import cache
+
+    try:
+        with scopes_disabled():
+            event = Event.objects.get(id=event_id)
+    except Event.DoesNotExist:
+        return
+
+    data_key = f"hubspot_properties_{event.id}_{object_type}"
+    lock_key = f"hubspot_properties_lock_{event.id}_{object_type}"
+    error_key = f"hubspot_properties_error_{event.id}_{object_type}"
+
+    try:
+        with scope(organizer=event.organizer):
+            properties = sync_hubspot_properties(event, object_type)
+        cache.set(
+            data_key, {"fetched_at": now(), "properties": properties}, timeout=None
+        )
+        cache.delete(error_key)
+    except HubSpotFetchError as e:
+        delay = 2**self.request.retries
+        retry_after = getattr(e, "retry_after", None)
+        if retry_after:
+            delay = max(delay, retry_after)
+
+        if self.request.retries >= self.max_retries:
+            # Max retries exceeded
+            cache.set(error_key, str(e), timeout=3600)  # error visible for 1 hour
+
+        try:
+            raise self.retry(exc=e, countdown=delay)
+        except self.MaxRetriesExceededError:
+            pass
+    finally:
+        # Always release lock
+        cache.delete(lock_key)
