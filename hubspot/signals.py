@@ -166,14 +166,37 @@ def control_order_info(sender, request, order, **kwargs):
     last_synced_at = None
     sync_needed = True
 
-    content_type = ContentType.objects.get_for_model(Order)
-    mapping = HubSpotObjectMapping.objects.filter(
-        event=order.event, content_type=content_type, object_id=order.id
+    content_type_order = ContentType.objects.get_for_model(Order)
+    content_type_position = ContentType.objects.get_for_model(OrderPosition)
+
+    order_mapping = HubSpotObjectMapping.objects.filter(
+        event=order.event, content_type=content_type_order, object_id=order.id
     ).first()
 
-    if mapping:
-        last_synced_at = mapping.last_synced_at
-        latest_log = mapping.synclog_set.order_by("-created_at").first()
+    position_ids = order.positions.values_list("id", flat=True)
+    position_mappings = HubSpotObjectMapping.objects.filter(
+        event=order.event,
+        content_type=content_type_position,
+        object_id__in=position_ids,
+    )
+
+    mappings = []
+    if order_mapping:
+        mappings.append(order_mapping)
+    mappings.extend(position_mappings)
+
+    if mappings:
+        mapping_ids = [m.id for m in mappings]
+        latest_log = (
+            SyncLog.objects.filter(object_mapping_id__in=mapping_ids)
+            .order_by("-created_at")
+            .first()
+        )
+        last_synced_at = max(
+            (m.last_synced_at for m in mappings if m.last_synced_at is not None),
+            default=None,
+        )
+
         if latest_log:
             if latest_log.status == SyncStatus.SUCCESS:
                 status_text = "Synced"
@@ -203,14 +226,17 @@ def control_order_info(sender, request, order, **kwargs):
 
     has_mapping_changes = False
     if status_text == "Synced":
-        object_type_mapping = ObjectTypeMapping.objects.filter(
-            event=order.event, eventyay_object_type="order"
-        ).first()
-        if object_type_mapping and last_synced_at:
-            if last_synced_at >= object_type_mapping.updated_at:
+        active_types = ObjectTypeMapping.objects.filter(
+            event=order.event, eventyay_object_type__in=["order", "order_position"]
+        )
+        if active_types.exists() and last_synced_at:
+            for otm in active_types:
+                if last_synced_at < otm.updated_at:
+                    has_mapping_changes = True
+                    break
+
+            if not has_mapping_changes:
                 sync_needed = False
-            else:
-                has_mapping_changes = True
 
     template = get_template("hubspot/control_order_info.html")
     ctx = {
@@ -218,6 +244,7 @@ def control_order_info(sender, request, order, **kwargs):
         "request": request,
         "event": sender,
         "is_connected": is_connected,
+        "is_paid": order.status == Order.STATUS_PAID,
         "status_text": status_text,
         "status_class": status_class,
         "last_synced_at": last_synced_at,

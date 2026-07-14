@@ -26,7 +26,11 @@
             <form action="{% url "plugins:hubspot:sync_order" organizer=event.organizer.slug event=event.slug order=order.code %}" method="post" style="margin: 0;">
                 {% csrf_token %}
                 {% if is_connected %}
-                    {% if sync_needed %}
+                    {% if not is_paid %}
+                    <button type="button" class="btn btn-primary sync-now-btn" disabled data-toggle="tooltip" title="{% trans "Order must be paid to sync." %}">
+                        {% trans "Sync now" %}
+                    </button>
+                    {% elif sync_needed %}
                     <button type="submit" class="btn btn-primary sync-now-btn" onclick="this.innerHTML='{% trans "Queued" %}'; this.disabled=true; this.form.submit();">
                         {% trans "Sync now" %}
                     </button>

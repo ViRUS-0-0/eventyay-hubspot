@@ -955,6 +955,24 @@ class SyncOrderNowView(EventPermissionRequiredMixin, View):
         order_code = kwargs["order"]
         try:
             order = Order.objects.get(code=order_code, event=request.event)
+
+            # Create a pending SyncLog so the UI updates immediately
+            from .models import HubSpotObjectMapping
+
+            content_type = ContentType.objects.get_for_model(Order)
+            mapping = HubSpotObjectMapping.objects.filter(
+                event=request.event, content_type=content_type, object_id=order.id
+            ).first()
+
+            SyncLog.objects.create(
+                event=request.event,
+                object_mapping=mapping,
+                action=SyncAction.UPDATE,
+                direction=SyncDirection.PUSH,
+                status=SyncStatus.PENDING,
+                detail={"message": f"Manual sync requested for order {order.code}"},
+            )
+
             sync_order_to_hubspot.apply_async(args=[order.id, request.event.id])
             messages.success(request, _("Sync task queued."))
         except Order.DoesNotExist:
