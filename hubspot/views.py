@@ -13,10 +13,16 @@ from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView, TemplateView, View
 from django_scopes import scope
-from eventyay.base.models import Event, Order, OrderPosition
+from eventyay.base.models import Event, Order, OrderPosition, Organizer
 
-from eventyay.control.permissions import EventPermissionRequiredMixin
+from eventyay.control.permissions import (
+    EventPermissionRequiredMixin,
+    OrganizerPermissionRequiredMixin,
+)
 from eventyay.control.views import PaginationMixin
+from eventyay.control.views.organizer_views.organizer_detail_view_mixin import (
+    OrganizerDetailViewMixin,
+)
 
 from django.contrib.contenttypes.models import ContentType
 from django.forms import modelformset_factory
@@ -37,6 +43,8 @@ from .models import (
     ObjectTypeMapping,
     HubSpotProperty,
     HubSpotPropertySyncState,
+    OrganizerHubSpotSettings,
+    OrganizerHubSpotOAuthToken,
     SyncAction,
     SyncDirection,
     SyncLog,
@@ -196,20 +204,35 @@ class EventHubSpotCallbackView(View):
         code = request.GET.get("code")
 
         # Unpack organizer and event slugs from the state parameter
-        try:
-            state_token, organizer_slug, event_slug = state.split(":", 2)
-        except ValueError:
+        parts = state.split(":")
+        state_token = parts[0] if len(parts) > 0 else ""
+        organizer_slug = parts[1] if len(parts) > 1 else ""
+        event_slug = parts[2] if len(parts) > 2 else ""
+
+        is_organizer_flow = len(parts) == 2
+
+        if (
+            not state_token
+            or not organizer_slug
+            or (not is_organizer_flow and not event_slug)
+        ):
             raise PermissionDenied(_("Invalid state parameter."))
 
         saved_state = request.session.pop("hubspot_oauth_state", None)
 
-        settings_url = reverse(
-            "plugins:hubspot:hubspot",
-            kwargs={
-                "organizer": organizer_slug,
-                "event": event_slug,
-            },
-        )
+        if is_organizer_flow:
+            settings_url = reverse(
+                "plugins:hubspot:org_hubspot",
+                kwargs={"organizer": organizer_slug},
+            )
+        else:
+            settings_url = reverse(
+                "plugins:hubspot:hubspot",
+                kwargs={
+                    "organizer": organizer_slug,
+                    "event": event_slug,
+                },
+            )
 
         if error:
             messages.error(
@@ -224,24 +247,37 @@ class EventHubSpotCallbackView(View):
             messages.error(request, _("Invalid state parameter. Please try again."))
             return redirect(settings_url)
 
-        # Retrieve the Event object
-        try:
-            event = Event.objects.select_related("organizer").get(
-                slug=event_slug,
-                organizer__slug=organizer_slug,
-            )
-        except Event.DoesNotExist:
-            raise PermissionDenied(_("Event not found."))
-
         # Verify permissions manually
         if not request.user.is_authenticated:
             raise PermissionDenied()
-        if not request.user.has_event_permission(
-            event.organizer, event, "can_change_event_settings", request=request
-        ):
-            raise PermissionDenied(
-                _("You do not have permission to view this content.")
-            )
+
+        if is_organizer_flow:
+            try:
+                organizer = Organizer.objects.get(slug=organizer_slug)
+            except Organizer.DoesNotExist:
+                raise PermissionDenied(_("Organizer not found."))
+
+            if not request.user.has_organizer_permission(
+                organizer, "can_change_organizer_settings", request=request
+            ):
+                raise PermissionDenied(
+                    _("You do not have permission to view this content.")
+                )
+        else:
+            try:
+                event = Event.objects.select_related("organizer").get(
+                    slug=event_slug,
+                    organizer__slug=organizer_slug,
+                )
+            except Event.DoesNotExist:
+                raise PermissionDenied(_("Event not found."))
+
+            if not request.user.has_event_permission(
+                event.organizer, event, "can_change_event_settings", request=request
+            ):
+                raise PermissionDenied(
+                    _("You do not have permission to view this content.")
+                )
 
         redirect_uri = os.environ.get("HUBSPOT_REDIRECT_URI", "")
         if not redirect_uri:
@@ -288,41 +324,70 @@ class EventHubSpotCallbackView(View):
             except requests.RequestException:
                 pass
 
-        with scope(organizer=event.organizer):
-            HubSpotOAuthToken.objects.update_or_create(
-                event=event,
-                defaults={
-                    "access_token": access_token,
-                    "refresh_token": data.get("refresh_token"),
-                    "token_type": data.get("token_type", "bearer"),
-                    "expires_at": expires_at,
-                    "hub_id": hub_id,
-                    "hub_name": hub_name,
-                    "scope": os.environ.get(
-                        "HUBSPOT_SCOPES",
-                        "oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write",
-                    ),
-                },
-            )
+        if is_organizer_flow:
+            with scope(organizer=organizer):
+                OrganizerHubSpotOAuthToken.objects.update_or_create(
+                    organizer=organizer,
+                    defaults={
+                        "access_token": access_token,
+                        "refresh_token": data.get("refresh_token"),
+                        "token_type": data.get("token_type", "bearer"),
+                        "expires_at": expires_at,
+                        "hub_id": hub_id,
+                        "hub_name": hub_name,
+                        "scope": os.environ.get(
+                            "HUBSPOT_SCOPES",
+                            "oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write",
+                        ),
+                    },
+                )
 
-            HubSpotEventSettings.objects.update_or_create(
-                event=event, defaults={"sync_enabled": True}
-            )
+                OrganizerHubSpotSettings.objects.update_or_create(
+                    organizer=organizer, defaults={"sync_enabled": True}
+                )
 
-            SyncLog.objects.create(
-                event=event,
-                action=SyncAction.CONNECT,
-                direction=SyncDirection.PUSH,
-                status=SyncStatus.SUCCESS,
-                detail={"message": "Connected to HubSpot"},
-            )
+                AuditLog.objects.create(
+                    organizer=organizer,
+                    event=None,
+                    action=AuditAction.ORG_CONNECT,
+                    ip_address=get_client_ip(request),
+                )
+        else:
+            with scope(organizer=event.organizer):
+                HubSpotOAuthToken.objects.update_or_create(
+                    event=event,
+                    defaults={
+                        "access_token": access_token,
+                        "refresh_token": data.get("refresh_token"),
+                        "token_type": data.get("token_type", "bearer"),
+                        "expires_at": expires_at,
+                        "hub_id": hub_id,
+                        "hub_name": hub_name,
+                        "scope": os.environ.get(
+                            "HUBSPOT_SCOPES",
+                            "oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write",
+                        ),
+                    },
+                )
 
-            AuditLog.objects.create(
-                organizer=event.organizer,
-                event=event,
-                action=AuditAction.CONNECT,
-                ip_address=get_client_ip(request),
-            )
+                HubSpotEventSettings.objects.update_or_create(
+                    event=event, defaults={"sync_enabled": True}
+                )
+
+                SyncLog.objects.create(
+                    event=event,
+                    action=SyncAction.CONNECT,
+                    direction=SyncDirection.PUSH,
+                    status=SyncStatus.SUCCESS,
+                    detail={"message": "Connected to HubSpot"},
+                )
+
+                AuditLog.objects.create(
+                    organizer=event.organizer,
+                    event=event,
+                    action=AuditAction.CONNECT,
+                    ip_address=get_client_ip(request),
+                )
 
         messages.success(request, _("Successfully connected to HubSpot."))
         return redirect(settings_url)
@@ -944,3 +1009,134 @@ class DismissSyncView(EventPermissionRequiredMixin, View):
                 },
             )
         )
+
+
+class OrganizerHubSpotSettingsView(
+    OrganizerPermissionRequiredMixin, OrganizerDetailViewMixin, TemplateView
+):
+    """Organizer-level settings page for HubSpot."""
+
+    template_name = "hubspot/organizer_settings.html"
+    permission = "can_change_organizer_settings"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        try:
+            token = self.request.organizer.organizerhubspotoauthtoken
+            context["is_connected"] = True
+            context["hub_name"] = token.hub_name
+            context["hub_id"] = token.hub_id
+            context["connected_since"] = token.created_at
+        except OrganizerHubSpotOAuthToken.DoesNotExist:
+            context["is_connected"] = False
+
+        settings, _ = OrganizerHubSpotSettings.objects.get_or_create(
+            organizer=self.request.organizer
+        )
+        context["sync_enabled"] = settings.sync_enabled
+
+        return context
+
+    def post(self, request, *args, **kwargs):
+        form_type = request.POST.get("form_type")
+        if form_type == "toggle":
+            settings, created = OrganizerHubSpotSettings.objects.get_or_create(
+                organizer=request.organizer
+            )
+            settings.sync_enabled = request.POST.get("sync_enabled") == "on"
+            settings.save()
+
+            AuditLog.objects.create(
+                organizer=request.organizer,
+                event=None,
+                action=AuditAction.ORG_TOGGLE,
+                ip_address=get_client_ip(request),
+            )
+            messages.success(request, _("Settings saved."))
+
+        return redirect(
+            reverse(
+                "plugins:hubspot:org_hubspot",
+                kwargs={"organizer": request.organizer.slug},
+            )
+        )
+
+
+class OrganizerHubSpotConnectView(OrganizerPermissionRequiredMixin, View):
+    """Initiates organizer-level HubSpot OAuth flow."""
+
+    permission = "can_change_organizer_settings"
+
+    def get(self, request, *args, **kwargs):
+        state_token = secrets.token_urlsafe(16)
+        request.session["hubspot_oauth_state"] = state_token
+        # Pass only the organizer slug inside state parameter (2 segments total)
+        state = f"{state_token}:{request.organizer.slug}"
+
+        redirect_uri = os.environ.get("HUBSPOT_REDIRECT_URI", "")
+        if not redirect_uri:
+            redirect_uri = request.build_absolute_uri(
+                reverse("plugins:hubspot:callback")
+            )
+
+        params = {
+            "client_id": os.environ.get("HUBSPOT_CLIENT_ID", ""),
+            "redirect_uri": redirect_uri,
+            "scope": os.environ.get(
+                "HUBSPOT_SCOPES",
+                "oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write",
+            ),
+            "state": state,
+        }
+        url = "https://app.hubspot.com/oauth/authorize?" + urllib.parse.urlencode(
+            params
+        )
+        return redirect(url)
+
+
+class OrganizerHubSpotDisconnectView(OrganizerPermissionRequiredMixin, View):
+    """Disconnects from HubSpot at the organizer level."""
+
+    permission = "can_change_organizer_settings"
+
+    def post(self, request, *args, **kwargs):
+        settings_url = reverse(
+            "plugins:hubspot:org_hubspot",
+            kwargs={"organizer": request.organizer.slug},
+        )
+
+        try:
+            token = OrganizerHubSpotOAuthToken.objects.get(organizer=request.organizer)
+        except OrganizerHubSpotOAuthToken.DoesNotExist:
+            messages.info(request, _("Not connected to HubSpot."))
+            return redirect(settings_url)
+
+        # Attempt to revoke at HubSpot
+        try:
+            revoke_url = (
+                f"https://api.hubapi.com/oauth/v1/refresh-tokens/{token.refresh_token}"
+            )
+            response = requests.delete(revoke_url, timeout=10)
+            if not response.ok:
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to revoke HubSpot organizer token: {response.status_code} {response.text}"
+                )
+        except requests.RequestException as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error reaching HubSpot revoke endpoint: {e}")
+
+        with scope(organizer=request.organizer):
+            token.delete()
+            OrganizerHubSpotSettings.objects.filter(organizer=request.organizer).update(
+                sync_enabled=False
+            )
+            AuditLog.objects.create(
+                organizer=request.organizer,
+                event=None,
+                action=AuditAction.ORG_DISCONNECT,
+                ip_address=get_client_ip(request),
+            )
+
+        messages.success(request, _("Successfully disconnected from HubSpot."))
+        return redirect(settings_url)

@@ -79,6 +79,60 @@ class HubSpotOAuthToken(models.Model):
         return f"OAuth Token for {self.event.name}"
 
 
+class OrganizerHubSpotSettings(models.Model):
+    organizer = models.OneToOneField("base.Organizer", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="organizer")
+    sync_enabled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Organizer HubSpot Settings"
+        verbose_name_plural = "Organizer HubSpot Settings"
+
+    def __str__(self):
+        return f"HubSpot Settings for {self.organizer.name}"
+
+
+class OrganizerHubSpotOAuthToken(models.Model):
+    organizer = models.OneToOneField("base.Organizer", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="organizer")
+    _access_token = models.TextField(db_column="access_token")
+    _refresh_token = models.TextField(db_column="refresh_token")
+    token_type = models.CharField(
+        max_length=50, choices=TokenType.choices, default=TokenType.BEARER
+    )
+    expires_at = models.DateTimeField(null=True, blank=True)
+    hub_id = models.CharField(max_length=100, blank=True)
+    hub_name = models.CharField(max_length=200, blank=True)
+    scope = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def access_token(self):
+        return decrypt(self._access_token)
+
+    @access_token.setter
+    def access_token(self, value):
+        self._access_token = encrypt(value)
+
+    @property
+    def refresh_token(self):
+        return decrypt(self._refresh_token)
+
+    @refresh_token.setter
+    def refresh_token(self, value):
+        self._refresh_token = encrypt(value)
+
+    class Meta:
+        verbose_name = "Organizer HubSpot OAuth Token"
+        verbose_name_plural = "Organizer HubSpot OAuth Tokens"
+
+    def __str__(self):
+        return f"OAuth Token for {self.organizer.name}"
+
+
 class HubSpotEventSettings(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
     objects = ScopedManager(organizer="event__organizer")
@@ -185,6 +239,9 @@ class AuditAction(models.TextChoices):
     FIELD_MAPPING_UPDATED = "field_map_updated"
     AUTO_SYNC_ENABLED = "auto_sync_enabled"
     AUTO_SYNC_DISABLED = "auto_sync_disabled"
+    ORG_CONNECT = "org_connect"
+    ORG_DISCONNECT = "org_disconnect"
+    ORG_TOGGLE = "org_toggle"
 
 
 class AuditLog(models.Model):

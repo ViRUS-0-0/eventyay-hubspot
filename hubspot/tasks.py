@@ -22,7 +22,6 @@ from .client import (
 )
 from .services import get_valid_hubspot_token
 from .models import (
-    HubSpotEventSettings,
     HubSpotFieldMapping,
     HubSpotObjectMapping,
     HubSpotProperty,
@@ -292,8 +291,9 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
         return
 
     with scope(organizer=event.organizer):
-        settings = HubSpotEventSettings.objects.filter(event=event).first()
-        if not settings or not settings.sync_enabled:
+        from .services import is_sync_enabled
+
+        if not is_sync_enabled(event):
             logger.info(f"Sync is disabled for event {event_id}. Skipping.")
             return
 
