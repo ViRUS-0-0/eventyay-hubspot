@@ -74,7 +74,8 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
                             direction=SyncDirection.PUSH,
                             status=SyncStatus.PENDING,
                             detail={
-                                "message": f"Auto-sync disabled, sync pending for order {order.code}"
+                                "message": f"Auto-sync disabled, sync pending for order {order.code}",
+                                "order_code": order.code,
                             },
                         )
 
@@ -208,17 +209,11 @@ def control_order_info(sender, request, order, **kwargs):
                 status_text = _("Waiting to sync")
                 status_class = "label label-warning"
     else:
-        pending_logs = SyncLog.objects.filter(
+        pending_log = SyncLog.objects.filter(
             event=order.event,
             status=SyncStatus.PENDING,
-        ).order_by("-created_at")
-
-        pending_log = None
-        for log in pending_logs:
-            if log.detail and isinstance(log.detail, dict):
-                if order.code in log.detail.get("message", ""):
-                    pending_log = log
-                    break
+            detail__order_code=order.code,
+        ).first()
 
         if pending_log:
             status_text = _("Waiting to sync")

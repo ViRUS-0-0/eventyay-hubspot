@@ -329,7 +329,7 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
             SyncLog.objects.filter(
                 event=event,
                 status=SyncStatus.PENDING,
-                detail__message__contains=order.code,
+                detail__order_code=order.code,
             ).delete()
             return
 
@@ -348,7 +348,7 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
             SyncLog.objects.filter(
                 event=event,
                 status=SyncStatus.PENDING,
-                detail__message__contains=order.code,
+                detail__order_code=order.code,
             ).delete()
         except HubSpotTransientError as e:
             delay = 2**self.request.retries

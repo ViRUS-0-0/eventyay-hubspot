@@ -983,7 +983,10 @@ class SyncOrderNowView(EventPermissionRequiredMixin, View):
                 action=SyncAction.UPDATE,
                 direction=SyncDirection.PUSH,
                 status=SyncStatus.PENDING,
-                detail={"message": f"Manual sync requested for order {order.code}"},
+                detail={
+                    "message": f"Manual sync requested for order {order.code}",
+                    "order_code": order.code,
+                },
             )
 
             sync_order_to_hubspot.apply_async(args=[order.id, request.event.id])

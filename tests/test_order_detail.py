@@ -148,7 +148,10 @@ def test_order_info_pending_no_mapping(client, event, order, organizer):
         action=SyncAction.CREATE,
         direction=SyncDirection.PUSH,
         status=SyncStatus.PENDING,
-        detail={"message": f"Auto-sync disabled, sync pending for order {order.code}"},
+        detail={
+            "message": f"Auto-sync disabled, sync pending for order {order.code}",
+            "order_code": order.code,
+        },
     )
 
     class DummyRequest:
@@ -175,6 +178,9 @@ def test_sync_now_view(
     mock_apply, logged_in_organizer_client, event, order, organizer, settings
 ):
     settings.SITE_URL = "https://testserver"
+
+    order.status = Order.STATUS_PAID
+    order.save()
 
     url = reverse(
         "plugins:hubspot:sync_order",
