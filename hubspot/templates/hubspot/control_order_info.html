@@ -25,7 +25,11 @@
             
             <form action="{% url "plugins:hubspot:sync_order" organizer=event.organizer.slug event=event.slug order=order.code %}" method="post" style="margin: 0;">
                 {% csrf_token %}
-                {% if is_connected %}
+                {% if not can_sync %}
+                    <button type="button" class="btn btn-primary sync-now-btn" disabled data-toggle="tooltip" title="{% trans "You do not have permission to sync orders." %}">
+                        {% trans "Sync now" %}
+                    </button>
+                {% elif is_connected %}
                     {% if not is_paid %}
                     <button type="button" class="btn btn-primary sync-now-btn" disabled data-toggle="tooltip" title="{% trans "Order must be paid to sync." %}">
                         {% trans "Sync now" %}

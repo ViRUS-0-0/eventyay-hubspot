@@ -161,7 +161,7 @@ def control_order_info(sender, request, order, **kwargs):
     if settings and settings.sync_enabled and has_token:
         is_connected = True
 
-    status_text = "Not synced yet"
+    status_text = _("Not synced yet")
     status_class = "label label-default"
     last_synced_at = None
     sync_needed = True
@@ -199,13 +199,13 @@ def control_order_info(sender, request, order, **kwargs):
 
         if latest_log:
             if latest_log.status == SyncStatus.SUCCESS:
-                status_text = "Synced"
+                status_text = _("Synced")
                 status_class = "label label-success"
             elif latest_log.status == SyncStatus.FAILED:
-                status_text = "Failed — could not reach HubSpot"
+                status_text = _("Failed — could not reach HubSpot")
                 status_class = "label label-danger"
             elif latest_log.status == SyncStatus.PENDING:
-                status_text = "Waiting to sync"
+                status_text = _("Waiting to sync")
                 status_class = "label label-warning"
     else:
         pending_logs = SyncLog.objects.filter(
@@ -221,11 +221,11 @@ def control_order_info(sender, request, order, **kwargs):
                     break
 
         if pending_log:
-            status_text = "Waiting to sync"
+            status_text = _("Waiting to sync")
             status_class = "label label-warning"
 
     has_mapping_changes = False
-    if status_text == "Synced":
+    if status_text == _("Synced"):
         active_types = ObjectTypeMapping.objects.filter(
             event=order.event, eventyay_object_type__in=["order", "order_position"]
         )
@@ -236,7 +236,22 @@ def control_order_info(sender, request, order, **kwargs):
                     break
 
             if not has_mapping_changes:
+                active_fields = HubSpotFieldMapping.objects.filter(
+                    event=order.event,
+                    content_type__in=[content_type_order, content_type_position],
+                    is_active=True,
+                )
+                for fm in active_fields:
+                    if last_synced_at < fm.updated_at:
+                        has_mapping_changes = True
+                        break
+
+            if not has_mapping_changes:
                 sync_needed = False
+
+    can_sync = request.user.has_event_permission(
+        request.organizer, request.event, "can_change_event_settings", request
+    )
 
     template = get_template("hubspot/control_order_info.html")
     ctx = {
@@ -250,5 +265,6 @@ def control_order_info(sender, request, order, **kwargs):
         "last_synced_at": last_synced_at,
         "sync_needed": sync_needed,
         "has_mapping_changes": has_mapping_changes,
+        "can_sync": can_sync,
     }
     return template.render(ctx, request=request)

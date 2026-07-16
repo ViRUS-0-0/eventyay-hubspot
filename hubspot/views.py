@@ -956,6 +956,19 @@ class SyncOrderNowView(EventPermissionRequiredMixin, View):
         try:
             order = Order.objects.get(code=order_code, event=request.event)
 
+            if order.status != Order.STATUS_PAID:
+                messages.error(request, _("Only paid orders can be synced."))
+                return redirect(
+                    reverse(
+                        "control:event.order",
+                        kwargs={
+                            "organizer": request.event.organizer.slug,
+                            "event": request.event.slug,
+                            "code": order_code,
+                        },
+                    )
+                )
+
             # Create a pending SyncLog so the UI updates immediately
             from .models import HubSpotObjectMapping
 
