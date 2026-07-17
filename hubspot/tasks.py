@@ -8,6 +8,7 @@ from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
 from django.conf import settings
 from django.urls import reverse
+from django.core.cache import cache
 
 from eventyay.base.models import Event, Order, OrderPosition
 
@@ -595,7 +596,6 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
     Background task to refresh HubSpot properties.
     Uses exponential backoff on failure.
     """
-    from django.core.cache import cache
 
     try:
         with scopes_disabled():

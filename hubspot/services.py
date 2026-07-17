@@ -15,8 +15,6 @@ from .models import (
     SyncLog,
     SyncStatus,
 )
-
-import time
 from django.core.cache import cache
 
 
@@ -53,47 +51,14 @@ def get_hubspot_properties(
         ):
             is_stale = True
 
-    if not cached_data:
-        # First-ever fetch (nothing in cache yet): fetch synchronously and block
-        logger = logging.getLogger(__name__)
-
-        waited = 0
-        while not cache.add(lock_key, "1", timeout=60):
-            time.sleep(1)
-            waited += 1
-            if waited > 15:
-                break
-
-        # Double check inside lock
-        cached_data = cache.get(data_key)
-        if cached_data:
-            cache.delete(lock_key)
-            return cached_data.get("properties", [])
-
-        try:
-            properties = sync_hubspot_properties(event, object_type)
-            # Store in cache
-            cache.set(
-                data_key, {"fetched_at": now(), "properties": properties}, timeout=None
-            )
-            cache.delete(lock_key)
-            # Clear error key on success
-            cache.delete(f"hubspot_properties_error_{event.id}_{object_type}")
-            return properties
-        except HubSpotFetchError as e:
-            logger.error(f"Failed to fetch properties from HubSpot: {e}")
-            cache.delete(lock_key)
-            raise e
-        except Exception as e:
-            cache.delete(lock_key)
-            raise e
-
-    elif force_sync or is_stale:
-        # Past staleness window or forced: silently trigger the Celery task in the background
+    if not cached_data or force_sync or is_stale:
         if cache.add(lock_key, "1", timeout=60):
             from .tasks import refresh_hubspot_properties_task
 
             refresh_hubspot_properties_task.apply_async(args=[event.id, object_type])
+
+    if not cached_data:
+        return []
 
     return cached_data.get("properties", [])
 

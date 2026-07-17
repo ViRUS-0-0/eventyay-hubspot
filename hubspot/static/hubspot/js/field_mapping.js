@@ -65,4 +65,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Bind initially existing remove buttons (for newly added rows in empty formset)
     bindRemoveButtons(tableBody);
+
+    var form = document.getElementById('field-mapping-form');
+    if (form && form.getAttribute('data-is-fetching') === 'true') {
+        var saveBtn = document.querySelector('.btn-save');
+        if (saveBtn) saveBtn.disabled = true;
+
+        var selects = document.querySelectorAll('select[name$="hubspot_property"]');
+        selects.forEach(function(select) {
+            select.disabled = true;
+            
+            if (window.jQuery) {
+                var $select = $(select);
+                setTimeout(function() {
+                    var $container = $select.next('.select2-container');
+                    var loaderHtml = '<div class="text-muted" style="padding: 6px;"><i class="fa fa-spinner fa-spin fa-fw"></i> Loading properties...</div>';
+                    if ($container.length) {
+                        $container.hide();
+                        $container.after(loaderHtml);
+                    } else {
+                        $select.hide();
+                        $select.after(loaderHtml);
+                    }
+                }, 100);
+            }
+        });
+
+        setTimeout(function() {
+            window.location.reload();
+        }, 5000);
+    }
 });

@@ -3,7 +3,7 @@
 {% load bootstrap3 %}
 
 {% block custom_header %}
-    <script type="text/javascript" src="{% static "hubspot/js/field_mapping.js" %}" defer></script>
+    <script type="text/javascript" src="{% static "hubspot/js/field_mapping.js" %}?v=2" defer></script>
 {% endblock %}
 
 {% block title %}{% translate "Field Mapping" %} :: {% endblock %}
@@ -19,7 +19,7 @@
         </a>
     </h1>
 
-    <form method="post" action="" class="form-horizontal">
+    <form method="post" action="" class="form-horizontal" id="field-mapping-form" data-is-fetching="{% if is_fetching_properties %}true{% else %}false{% endif %}">
         {% csrf_token %}
         {{ formset.management_form }}
 

@@ -8,6 +8,7 @@ import requests
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
@@ -383,7 +384,6 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
             )
 
         # Clear synced HubSpot properties
-        from django.core.cache import cache
 
         cache.delete(f"hubspot_properties_{request.event.id}_contacts")
         cache.delete(f"hubspot_properties_{request.event.id}_deals")
@@ -544,8 +544,6 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             )
             hubspot_properties = []
 
-        from django.core.cache import cache
-
         error_key = (
             f"hubspot_properties_error_{request.event.id}_{mapping.hubspot_object_type}"
         )
@@ -555,9 +553,17 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
                 "HubSpot may be unreachable or you might need to reconnect."
             )
 
+        is_fetching_properties = (
+            cache.get(
+                f"hubspot_properties_lock_{request.event.id}_{mapping.hubspot_object_type}"
+            )
+            is not None
+        )
+
         form_kwargs = {
             "eventyay_fields": eventyay_fields,
             "hubspot_properties": hubspot_properties,
+            "is_fetching_properties": is_fetching_properties,
         }
 
         return {
@@ -568,6 +574,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             "hubspot_object_type": hubspot_object_type,
             "mapping": mapping,
             "sync_error": sync_error,
+            "is_fetching_properties": is_fetching_properties,
         }
 
     def get(self, request, *args, **kwargs):
@@ -581,7 +588,6 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
                 raise PermissionDenied(_("Invalid object mapping."))
 
             rate_limit_key = f"hubspot_manual_sync_limit_{request.event.id}_{mapping.hubspot_object_type}"
-            from django.core.cache import cache
 
             if cache.add(rate_limit_key, "1", timeout=30):
                 from .tasks import refresh_hubspot_properties_task
@@ -616,6 +622,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
         context["hubspot_object_type"] = setup["hubspot_object_type"]
         context["mapping"] = setup["mapping"]
         context["sync_error"] = setup.get("sync_error")
+        context["is_fetching_properties"] = setup.get("is_fetching_properties", False)
 
         if "formset" not in context:
             context["formset"] = setup["FormSet"](
