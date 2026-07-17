@@ -13,6 +13,7 @@ from hubspot.models import (
 from hubspot.services import (
     get_valid_hubspot_token,
     get_hubspot_properties,
+    sync_hubspot_properties,
     HubSpotFetchError,
 )
 
@@ -80,8 +81,11 @@ def test_concurrent_refresh_attempts(mock_post, event, hubspot_token):
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
 @mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_success_and_cache(mock_get, event, hubspot_token):
+def test_sync_hubspot_properties_success_and_cache(
+    mock_get, mock_task, event, hubspot_token
+):
     cache.clear()
 
     mock_response_1 = mock.Mock()
@@ -104,8 +108,9 @@ def test_get_hubspot_properties_success_and_cache(mock_get, event, hubspot_token
     }
     mock_get.side_effect = [mock_response_1, mock_response_2]
 
+    # Test sync_hubspot_properties directly to verify API parsing
     with scope(organizer=event.organizer):
-        properties = get_hubspot_properties(event, "contact")
+        properties = sync_hubspot_properties(event, "contact")
 
     assert len(properties) == 4
     assert properties[0] == {
@@ -116,67 +121,53 @@ def test_get_hubspot_properties_success_and_cache(mock_get, event, hubspot_token
     assert properties[1] == {"key": "age", "label": "Age", "data_type": "number"}
     assert mock_get.call_count == 2
 
-    # Second call should use cache and not hit API
+    # Test get_hubspot_properties first-fetch behavior
     with scope(organizer=event.organizer):
         properties2 = get_hubspot_properties(event, "contact")
 
-    assert properties == properties2
-    assert mock_get.call_count == 2
-
-
-@pytest.mark.django_db
-@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
-@mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_ttl_expiry(mock_get, mock_task, event, hubspot_token):
-    cache.clear()
-
-    mock_response = mock.Mock()
-    mock_response.ok = True
-    mock_response.json.return_value = {
-        "results": [
-            {"name": "firstname", "label": "First Name", "type": "string"},
-        ]
-    }
-    mock_get.return_value = mock_response
-
-    with scope(organizer=event.organizer):
-        properties = get_hubspot_properties(event, "contact")
-
-    assert len(properties) == 1
-    assert mock_get.call_count == 1
-
-    # Simulate TTL expiry in cache
-    data_key = f"hubspot_properties_{event.id}_contact"
-    cached_data = cache.get(data_key)
-    cached_data["fetched_at"] = now() - datetime.timedelta(minutes=15)
-    cache.set(data_key, cached_data)
-
-    # Second call should trigger celery task and return stale data without hitting API again synchronously
-    with scope(organizer=event.organizer):
-        properties2 = get_hubspot_properties(event, "contact")
-
-    assert len(properties2) == 1
-    assert mock_get.call_count == 1
+    assert properties2 == []
     mock_task.assert_called_once_with(args=[event.id, "contact"])
 
 
 @pytest.mark.django_db
-def test_get_hubspot_properties_no_token(event, caplog):
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
+def test_get_hubspot_properties_ttl_expiry(mock_task, event, hubspot_token):
+    cache.clear()
+
+    # Simulate TTL expiry in cache
+    data_key = f"hubspot_properties_{event.id}_contact"
+    cached_data = {
+        "fetched_at": now() - datetime.timedelta(minutes=15),
+        "properties": [
+            {"key": "firstname", "label": "First Name", "data_type": "text"}
+        ],
+    }
+    cache.set(data_key, cached_data)
+
+    # Call should trigger celery task and return stale data without hitting API again synchronously
+    with scope(organizer=event.organizer):
+        properties2 = get_hubspot_properties(event, "contact")
+
+    assert len(properties2) == 1
+    mock_task.assert_called_once_with(args=[event.id, "contact"])
+
+
+@pytest.mark.django_db
+def test_sync_hubspot_properties_no_token(event, caplog):
     cache.clear()
     with scope(organizer=event.organizer):
-        with pytest.raises(HubSpotFetchError):
-            get_hubspot_properties(event, "contact")
-
-    assert "Not connected to HubSpot or token is invalid" in caplog.text
+        with pytest.raises(
+            HubSpotFetchError, match="Not connected to HubSpot or token is invalid"
+        ):
+            sync_hubspot_properties(event, "contact")
 
 
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token, caplog):
+def test_sync_hubspot_properties_api_failure(mock_get, event, hubspot_token, caplog):
     cache.clear()
     mock_get.side_effect = requests.RequestException("API error")
 
     with scope(organizer=event.organizer):
-        with pytest.raises(HubSpotFetchError):
-            get_hubspot_properties(event, "contact")
-    assert "Failed to fetch properties from HubSpot" in caplog.text
+        with pytest.raises(HubSpotFetchError, match="Could not connect to HubSpot API"):
+            sync_hubspot_properties(event, "contact")
