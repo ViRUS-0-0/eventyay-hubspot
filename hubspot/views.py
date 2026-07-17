@@ -389,6 +389,10 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
         cache.delete(f"hubspot_properties_{request.event.id}_deals")
         cache.delete(f"hubspot_properties_error_{request.event.id}_contacts")
         cache.delete(f"hubspot_properties_error_{request.event.id}_deals")
+        cache.delete(f"hubspot_properties_lock_{request.event.id}_contacts")
+        cache.delete(f"hubspot_properties_lock_{request.event.id}_deals")
+        cache.delete(f"hubspot_auto_sync_limit_{request.event.id}_contacts")
+        cache.delete(f"hubspot_auto_sync_limit_{request.event.id}_deals")
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)
@@ -590,6 +594,11 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             rate_limit_key = f"hubspot_manual_sync_limit_{request.event.id}_{mapping.hubspot_object_type}"
 
             if cache.add(rate_limit_key, "1", timeout=30):
+                error_key = f"hubspot_properties_error_{request.event.id}_{mapping.hubspot_object_type}"
+                cache.delete(error_key)
+                lock_key = f"hubspot_properties_lock_{request.event.id}_{mapping.hubspot_object_type}"
+                cache.add(lock_key, "1", timeout=60)
+
                 from .tasks import refresh_hubspot_properties_task
 
                 refresh_hubspot_properties_task.apply_async(

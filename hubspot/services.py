@@ -35,12 +35,18 @@ def get_hubspot_properties(
     """
     data_key = f"hubspot_properties_{event.id}_{object_type}"
     lock_key = f"hubspot_properties_lock_{event.id}_{object_type}"
+    error_key = f"hubspot_properties_error_{event.id}_{object_type}"
+    rate_limit_key = f"hubspot_auto_sync_limit_{event.id}_{object_type}"
 
     try:
         ttl_minutes = int(os.environ.get("HUBSPOT_PROPERTY_SYNC_TTL_MINUTES", "10"))
     except ValueError:
         ttl_minutes = 10
 
+    if force_sync:
+        cache.delete(error_key)
+
+    has_error = cache.get(error_key) is not None
     cached_data = cache.get(data_key)
 
     is_stale = False
@@ -51,11 +57,16 @@ def get_hubspot_properties(
         ):
             is_stale = True
 
-    if not cached_data or force_sync or is_stale:
+    if force_sync or (not has_error and (not cached_data or is_stale)):
         if cache.add(lock_key, "1", timeout=60):
-            from .tasks import refresh_hubspot_properties_task
+            if force_sync or cache.add(rate_limit_key, "1", timeout=30):
+                from .tasks import refresh_hubspot_properties_task
 
-            refresh_hubspot_properties_task.apply_async(args=[event.id, object_type])
+                refresh_hubspot_properties_task.apply_async(
+                    args=[event.id, object_type]
+                )
+            else:
+                cache.delete(lock_key)
 
     if not cached_data:
         return []

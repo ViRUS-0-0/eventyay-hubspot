@@ -590,7 +590,7 @@ def sync_all_mappings_task(self, event_id: int):
         sync_order_to_hubspot.apply_async(args=[order_id, event_id], countdown=0)
 
 
-@shared_task(bind=True, max_retries=5)
+@shared_task(bind=True, max_retries=3)
 def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
     """
     Background task to refresh HubSpot properties.
@@ -614,6 +614,7 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
             data_key, {"fetched_at": now(), "properties": properties}, timeout=None
         )
         cache.delete(error_key)
+        cache.delete(lock_key)
     except HubSpotFetchError as e:
         delay = 2**self.request.retries
         retry_after = getattr(e, "retry_after", None)
@@ -623,11 +624,16 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
         if self.request.retries >= self.max_retries:
             # Max retries exceeded
             cache.set(error_key, str(e), timeout=3600)  # error visible for 1 hour
+            cache.delete(lock_key)
 
         try:
+            if self.request.retries < self.max_retries:
+                cache.set(lock_key, "1", timeout=int(delay + 60))
             raise self.retry(exc=e, countdown=delay)
         except self.MaxRetriesExceededError:
-            pass
-    finally:
-        # Always release lock
+            cache.set(error_key, str(e), timeout=3600)
+            cache.delete(lock_key)
+    except Exception as e:
+        cache.set(error_key, str(e), timeout=3600)
         cache.delete(lock_key)
+        raise

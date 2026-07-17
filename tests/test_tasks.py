@@ -300,3 +300,42 @@ def test_permanent_error_no_retry(
     logs = SyncLog.objects.filter(event=mock_event)
     assert logs.count() == 1
     assert logs.first().status == SyncStatus.FAILED
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.sync_hubspot_properties")
+def test_refresh_hubspot_properties_task_retries_and_error(mock_sync, mock_event):
+    from hubspot.tasks import refresh_hubspot_properties_task
+    from hubspot.services import HubSpotFetchError
+    from django.core.cache import cache
+
+    cache.clear()
+    assert refresh_hubspot_properties_task.max_retries == 3
+
+    # Test retry mechanism and lock preservation on failure before max retries
+    mock_sync.side_effect = HubSpotFetchError("Rate limited")
+    lock_key = f"hubspot_properties_lock_{mock_event.id}_contact"
+    error_key = f"hubspot_properties_error_{mock_event.id}_contact"
+
+    cache.set(lock_key, "1")
+
+    with mock.patch.object(refresh_hubspot_properties_task, "retry") as mock_retry:
+        mock_retry.side_effect = Exception("RetryCalled")
+        with pytest.raises(Exception, match="RetryCalled"):
+            refresh_hubspot_properties_task(mock_event.id, "contact")
+
+        # Before reaching max retries, error_key should not be set, and lock_key should still be preserved
+        assert cache.get(error_key) is None
+        assert cache.get(lock_key) is not None
+
+    # Test max retries exceeded behavior
+    cache.set(lock_key, "1")
+    with mock.patch.object(refresh_hubspot_properties_task.request, "retries", 3):
+        try:
+            refresh_hubspot_properties_task(mock_event.id, "contact")
+        except Exception:
+            pass
+
+        # Error should be set and lock should be released when retries are exhausted
+        assert cache.get(error_key) == "Rate limited"
+        assert cache.get(lock_key) is None

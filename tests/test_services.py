@@ -171,3 +171,45 @@ def test_sync_hubspot_properties_api_failure(mock_get, event, hubspot_token, cap
     with scope(organizer=event.organizer):
         with pytest.raises(HubSpotFetchError, match="Could not connect to HubSpot API"):
             sync_hubspot_properties(event, "contact")
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
+def test_get_hubspot_properties_error_suppression(mock_task, event, hubspot_token):
+    cache.clear()
+    error_key = f"hubspot_properties_error_{event.id}_contact"
+    cache.set(error_key, "Max retries exceeded")
+
+    # When error_key is set and force_sync is False, get_hubspot_properties should not trigger celery task
+    with scope(organizer=event.organizer):
+        props = get_hubspot_properties(event, "contact", force_sync=False)
+
+    assert props == []
+    mock_task.assert_not_called()
+
+    # When force_sync is True, error_key is cleared and task is triggered
+    with scope(organizer=event.organizer):
+        get_hubspot_properties(event, "contact", force_sync=True)
+
+    assert cache.get(error_key) is None
+    mock_task.assert_called_once_with(args=[event.id, "contact"])
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
+def test_get_hubspot_properties_auto_sync_rate_limit(mock_task, event, hubspot_token):
+    cache.clear()
+    with scope(organizer=event.organizer):
+        get_hubspot_properties(event, "contact", force_sync=False)
+
+    assert mock_task.call_count == 1
+
+    # Simulate lock expiring or being deleted after task failure/completion while within 30s auto-sync limit
+    lock_key = f"hubspot_properties_lock_{event.id}_contact"
+    cache.delete(lock_key)
+
+    with scope(organizer=event.organizer):
+        get_hubspot_properties(event, "contact", force_sync=False)
+
+    # Should not trigger celery task again because of rate limit key
+    assert mock_task.call_count == 1
