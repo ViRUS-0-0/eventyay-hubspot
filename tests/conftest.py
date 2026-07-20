@@ -40,6 +40,7 @@ def logged_in_organizer_client(client, user, organizer, event):
         organizer=organizer,
         name="Test Team",
         can_change_event_settings=True,
+        can_change_organizer_settings=True,
         all_events=True,
     )
     team.members.add(user)

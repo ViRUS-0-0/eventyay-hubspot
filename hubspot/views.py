@@ -51,7 +51,7 @@ from .models import (
     SyncStatus,
 )
 from .field_discovery import get_available_fields
-from .services import get_hubspot_properties, sync_hubspot_properties
+from .services import get_hubspot_properties, is_sync_enabled, sync_hubspot_properties
 from .utils import get_hubspot_activity_logs
 from .tasks import sync_all_mappings_task, sync_order_to_hubspot
 from .sync_logic import (
@@ -83,20 +83,39 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
         )
 
     def _get_settings_form(self, data=None):
-        settings, _ = HubSpotEventSettings.objects.get_or_create(
-            event=self.request.event
-        )
+        settings = HubSpotEventSettings.objects.filter(event=self.request.event).first()
+        if not settings:
+            if data is not None:
+                settings, _ = HubSpotEventSettings.objects.get_or_create(
+                    event=self.request.event
+                )
+            else:
+                settings = HubSpotEventSettings(
+                    event=self.request.event,
+                    sync_enabled=is_sync_enabled(self.request.event),
+                )
         return HubSpotEventSettingsForm(data, instance=settings)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        try:
-            token = self.request.event.hubspotoauthtoken
-            context["is_connected"] = True
-            context["hub_name"] = token.hub_name
-            context["hub_id"] = token.hub_id
-        except HubSpotOAuthToken.DoesNotExist:
+        if not is_sync_enabled(self.request.event):
             context["is_connected"] = False
+        else:
+            try:
+                token = self.request.event.hubspotoauthtoken
+                context["is_connected"] = True
+                context["hub_name"] = token.hub_name
+                context["hub_id"] = token.hub_id
+                context["connection_source"] = "event"
+            except HubSpotOAuthToken.DoesNotExist:
+                try:
+                    org_token = self.request.event.organizer.organizerhubspotoauthtoken
+                    context["is_connected"] = True
+                    context["hub_name"] = org_token.hub_name
+                    context["hub_id"] = org_token.hub_id
+                    context["connection_source"] = "organizer"
+                except OrganizerHubSpotOAuthToken.DoesNotExist:
+                    context["is_connected"] = False
 
         if "formset" not in context:
             context["formset"] = self._get_formset()
@@ -409,31 +428,36 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
 
         try:
             token = HubSpotOAuthToken.objects.get(event=request.event)
-        except HubSpotOAuthToken.DoesNotExist:
-            messages.info(request, _("Not connected to HubSpot."))
-            return redirect(settings_url)
-
-        # Attempt to revoke at HubSpot
-        try:
-            # We use the refresh token to revoke, as per HubSpot docs.
-            revoke_url = (
-                f"https://api.hubapi.com/oauth/v1/refresh-tokens/{token.refresh_token}"
-            )
-            response = requests.delete(revoke_url, timeout=10)
-            if not response.ok:
+            # Attempt to revoke at HubSpot
+            try:
+                # We use the refresh token to revoke, as per HubSpot docs.
+                revoke_url = f"https://api.hubapi.com/oauth/v1/refresh-tokens/{token.refresh_token}"
+                response = requests.delete(revoke_url, timeout=10)
+                if not response.ok:
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Failed to revoke HubSpot token: {response.status_code} {response.text}"
+                    )
+            except requests.RequestException as e:
                 logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Failed to revoke HubSpot token: {response.status_code} {response.text}"
-                )
-        except requests.RequestException as e:
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Error reaching HubSpot revoke endpoint: {e}")
+                logger.warning(f"Error reaching HubSpot revoke endpoint: {e}")
 
-        # Always clear local credentials
+            with scope(organizer=request.event.organizer):
+                token.delete()
+        except HubSpotOAuthToken.DoesNotExist:
+            with scope(organizer=request.event.organizer):
+                has_org_token = OrganizerHubSpotOAuthToken.objects.filter(
+                    organizer=request.event.organizer
+                ).exists()
+                if not has_org_token or not is_sync_enabled(request.event):
+                    messages.info(request, _("Not connected to HubSpot."))
+                    return redirect(settings_url)
+
+        # Always clear local credentials or disable sync
         with scope(organizer=request.event.organizer):
-            token.delete()
-            HubSpotEventSettings.objects.filter(event=request.event).update(
-                sync_enabled=False
+            HubSpotEventSettings.objects.update_or_create(
+                event=request.event,
+                defaults={"sync_enabled": False},
             )
             SyncLog.objects.create(
                 event=request.event,
@@ -755,16 +779,14 @@ class EventHubSpotSyncMappingView(EventPermissionRequiredMixin, View):
             },
         )
 
-        try:
-            token = HubSpotOAuthToken.objects.get(event=request.event)
-            token.check()  # Ensure token is valid and refresh if needed
-        except HubSpotOAuthToken.DoesNotExist:
-            messages.error(request, _("Not connected to HubSpot."))
-            return redirect(settings_url)
+        from .services import get_valid_hubspot_token
 
-        settings = HubSpotEventSettings.objects.filter(event=request.event).first()
-        if not settings or not settings.sync_enabled:
-            messages.error(request, _("Sync is disabled for this event."))
+        token = get_valid_hubspot_token(request.event)
+        if not token:
+            messages.error(
+                request,
+                _("Not connected to HubSpot or sync is disabled for this event."),
+            )
             return redirect(settings_url)
 
         sync_all_mappings_task.apply_async(args=[request.event.id])
@@ -1030,11 +1052,67 @@ class OrganizerHubSpotSettingsView(
         except OrganizerHubSpotOAuthToken.DoesNotExist:
             context["is_connected"] = False
 
-        settings, _ = OrganizerHubSpotSettings.objects.get_or_create(
+        settings, _created = OrganizerHubSpotSettings.objects.get_or_create(
             organizer=self.request.organizer
         )
         context["sync_enabled"] = settings.sync_enabled
 
+        events = list(
+            self.request.organizer.events.all().order_by("-date_from", "name")
+        )
+        if not events:
+            context["events"] = []
+            return context
+
+        settings_map = dict(
+            HubSpotEventSettings.objects.filter(event__in=events).values_list(
+                "event", "sync_enabled"
+            )
+        )
+        tokens_set = set(
+            HubSpotOAuthToken.objects.filter(event__in=events).values_list(
+                "event", flat=True
+            )
+        )
+        obj_mappings_set = set(
+            ObjectTypeMapping.objects.filter(event__in=events).values_list(
+                "event", flat=True
+            )
+        )
+        field_mappings_set = set(
+            HubSpotFieldMapping.objects.filter(event__in=events).values_list(
+                "event", flat=True
+            )
+        )
+
+        for event in events:
+            # Toggle state
+            event.event_sync_enabled = settings_map.get(event.id, settings.sync_enabled)
+
+            # Connection status
+            has_event_token = event.id in tokens_set
+            if has_event_token and event.event_sync_enabled:
+                event.connection_status_text = _("Connected (Event token)")
+                event.connection_badge_class = "success"
+            elif context["is_connected"] and event.event_sync_enabled:
+                event.connection_status_text = _("Connected (Organizer fallback)")
+                event.connection_badge_class = "info"
+            else:
+                event.connection_status_text = _("Not connected")
+                event.connection_badge_class = "muted"
+
+            # Mapping status
+            has_mappings = (
+                event.id in obj_mappings_set or event.id in field_mappings_set
+            )
+            if has_mappings:
+                event.mapping_status_text = _("Custom")
+                event.mapping_badge_class = "primary"
+            else:
+                event.mapping_status_text = _("Organizer default")
+                event.mapping_badge_class = "default"
+
+        context["events"] = events
         return context
 
     def post(self, request, *args, **kwargs):
@@ -1053,6 +1131,41 @@ class OrganizerHubSpotSettingsView(
                 ip_address=get_client_ip(request),
             )
             messages.success(request, _("Settings saved."))
+
+        elif form_type == "events_toggle":
+            event_ids = request.POST.getlist("event_ids")
+            events = list(request.organizer.events.filter(id__in=event_ids))
+            existing_settings = {
+                s.event_id: s
+                for s in HubSpotEventSettings.objects.filter(event__in=events)
+            }
+            to_create = []
+            to_update = []
+            for event in events:
+                is_checked = f"event_sync_enabled_{event.id}" in request.POST
+                ev_settings = existing_settings.get(event.id)
+                if ev_settings:
+                    if ev_settings.sync_enabled != is_checked:
+                        ev_settings.sync_enabled = is_checked
+                        to_update.append(ev_settings)
+                else:
+                    to_create.append(
+                        HubSpotEventSettings(event=event, sync_enabled=is_checked)
+                    )
+
+            if to_create:
+                HubSpotEventSettings.objects.bulk_create(to_create)
+            if to_update:
+                HubSpotEventSettings.objects.bulk_update(to_update, ["sync_enabled"])
+
+            if to_create or to_update:
+                AuditLog.objects.create(
+                    organizer=request.organizer,
+                    event=None,
+                    action=AuditAction.ORG_TOGGLE,
+                    ip_address=get_client_ip(request),
+                )
+            messages.success(request, _("Event sync settings saved."))
 
         return redirect(
             reverse(

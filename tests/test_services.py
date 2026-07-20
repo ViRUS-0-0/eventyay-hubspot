@@ -8,13 +8,17 @@ from django.utils.timezone import now
 from django_scopes import scope
 
 from hubspot.models import (
+    HubSpotEventSettings,
     HubSpotOAuthToken,
     HubSpotProperty,
     HubSpotPropertySyncState,
+    OrganizerHubSpotSettings,
+    OrganizerHubSpotOAuthToken,
 )
 from hubspot.services import (
     get_valid_hubspot_token,
     get_hubspot_properties,
+    is_sync_enabled,
     HubSpotFetchError,
 )
 
@@ -246,3 +250,27 @@ def test_sync_resumes_after_crash(mock_get, event, hubspot_token):
     mock_get.assert_called_once()
     args, kwargs = mock_get.call_args
     assert kwargs["params"] == {"after": "page3"}
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_and_token_respect_event_toggle_off(event):
+    with scope(organizer=event.organizer):
+        # Setup organizer with sync enabled and token
+        OrganizerHubSpotSettings.objects.create(
+            organizer=event.organizer, sync_enabled=True
+        )
+        OrganizerHubSpotOAuthToken.objects.create(
+            organizer=event.organizer,
+            access_token="org_access",
+            refresh_token="org_refresh",
+            expires_at=now() + datetime.timedelta(hours=1),
+        )
+
+        # Without event setting, event inherits organizer sync_enabled
+        assert is_sync_enabled(event) is True
+        assert get_valid_hubspot_token(event) == "org_access"
+
+        # Explicitly disable sync for this event
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=False)
+        assert is_sync_enabled(event) is False
+        assert get_valid_hubspot_token(event) is None

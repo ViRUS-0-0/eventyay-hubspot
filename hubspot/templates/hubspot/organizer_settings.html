@@ -56,5 +56,68 @@
             {% endif %}
         </div>
     </div>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% translate "Your Events" %}</h3>
+        </div>
+        <form method="post" action="{% url 'plugins:hubspot:org_hubspot' organizer=request.organizer.slug %}">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="events_toggle">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>{% translate "Event Name" %}</th>
+                            <th class="text-center">{% translate "Connection Status" %}</th>
+                            <th class="text-center">{% translate "Mapping Status" %}</th>
+                            <th class="text-center">{% translate "Sync Enabled" %}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in events %}
+                            <tr>
+                                <td>
+                                    <input type="hidden" name="event_ids" value="{{ event.id }}">
+                                    <a href="{% url 'plugins:hubspot:hubspot' organizer=request.organizer.slug event=event.slug %}">
+                                        <strong>{{ event.name }}</strong>
+                                    </a>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge badge-{{ event.connection_badge_class }}">
+                                        {{ event.connection_status_text }}
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge badge-{{ event.mapping_badge_class }}">
+                                        {{ event.mapping_status_text }}
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <label class="hubspot-toggle" style="vertical-align: middle;">
+                                        <input type="checkbox" name="event_sync_enabled_{{ event.id }}" value="1" {% if event.event_sync_enabled %}checked{% endif %}>
+                                        <span class="slider"></span>
+                                    </label>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">
+                                    <em>{% translate "No events found under this organizer." %}</em>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if events %}
+                <div class="panel-footer text-right">
+                    <button type="submit" class="btn btn-primary">
+                        {% translate "Save changes" %}
+                    </button>
+                </div>
+            {% endif %}
+        </form>
+    </div>
     {% endif %}
 {% endblock %}

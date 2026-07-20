@@ -258,9 +258,13 @@ def _refresh_token_record(token_obj, event_or_organizer, is_organizer=False):
 def get_valid_hubspot_token(event) -> str | None:
     """
     Returns a valid HubSpot access token for the given event.
+    If sync is disabled for the event, returns None.
     If the event has a token, uses it.
     Otherwise, checks the organizer's token if organizer sync is enabled.
     """
+    if not is_sync_enabled(event):
+        return None
+
     with transaction.atomic(), scope(organizer=event.organizer):
         # 1. Try event token
         try:
@@ -275,13 +279,12 @@ def get_valid_hubspot_token(event) -> str | None:
             pass
 
         # 2. Check Organizer settings
-        try:
-            org_settings = OrganizerHubSpotSettings.objects.get(
-                organizer=event.organizer
-            )
-            if not org_settings.sync_enabled:
-                return None
-        except OrganizerHubSpotSettings.DoesNotExist:
+        org_sync = (
+            OrganizerHubSpotSettings.objects.filter(organizer=event.organizer)
+            .values_list("sync_enabled", flat=True)
+            .first()
+        )
+        if not org_sync:
             return None
 
         # 3. Try Organizer token
@@ -302,26 +305,36 @@ def get_valid_hubspot_token(event) -> str | None:
 def is_sync_enabled(event) -> bool:
     """
     Returns True if HubSpot sync is enabled for the event or its organizer.
+    If HubSpotEventSettings exists for the event, its sync_enabled overrides organizer fallback.
     """
-    try:
-        if HubSpotEventSettings.objects.get(event=event).sync_enabled:
-            return True
-    except HubSpotEventSettings.DoesNotExist:
-        pass
+    with scope(organizer=event.organizer):
+        ev_sync = (
+            HubSpotEventSettings.objects.filter(event=event)
+            .values_list("sync_enabled", flat=True)
+            .first()
+        )
+        if ev_sync is not None:
+            return ev_sync
 
-    try:
-        return OrganizerHubSpotSettings.objects.get(
-            organizer=event.organizer
-        ).sync_enabled
-    except OrganizerHubSpotSettings.DoesNotExist:
-        return False
+        if HubSpotOAuthToken.objects.filter(event=event).exists():
+            return True
+
+        return (
+            OrganizerHubSpotSettings.objects.filter(organizer=event.organizer)
+            .values_list("sync_enabled", flat=True)
+            .first()
+            or False
+        )
 
 
 def is_auto_sync_enabled(event) -> bool:
     """
     Returns True if auto sync is enabled for the event.
     """
-    try:
-        return HubSpotEventSettings.objects.get(event=event).auto_sync_enabled
-    except HubSpotEventSettings.DoesNotExist:
-        return False
+    with scope(organizer=event.organizer):
+        return (
+            HubSpotEventSettings.objects.filter(event=event)
+            .values_list("auto_sync_enabled", flat=True)
+            .first()
+            or False
+        )
