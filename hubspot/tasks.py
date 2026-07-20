@@ -325,6 +325,12 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
             logger.info(
                 f"No active object mappings found for event {event_id}. Skipping sync for order {order_id}."
             )
+            # Clean up pending logs for this order
+            SyncLog.objects.filter(
+                event=event,
+                status=SyncStatus.PENDING,
+                detail__order_code=order.code,
+            ).delete()
             return
 
         try:
@@ -337,6 +343,13 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
 
                 for obj in objects_to_sync:
                     _sync_single_object(event, object_mapping_config, obj)
+
+            # Clean up pending logs for this order
+            SyncLog.objects.filter(
+                event=event,
+                status=SyncStatus.PENDING,
+                detail__order_code=order.code,
+            ).delete()
         except HubSpotTransientError as e:
             delay = 2**self.request.retries
             retry_after = getattr(e, "retry_after_seconds", None)
