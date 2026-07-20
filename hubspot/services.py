@@ -57,8 +57,32 @@ def get_hubspot_properties(
         ):
             is_stale = True
 
-    if force_sync or (not has_error and (not cached_data or is_stale)):
-        if cache.add(lock_key, "1", timeout=60):
+    if not cached_data:
+        if has_error and not force_sync:
+            return []
+        if cache.add(lock_key, "1", timeout=300):
+            try:
+                properties = sync_hubspot_properties(event, object_type)
+                cache.set(
+                    data_key,
+                    {"fetched_at": now(), "properties": properties},
+                    timeout=None,
+                )
+                cache.delete(error_key)
+                return properties
+            except Exception as e:
+                cache.set(error_key, str(e), timeout=3600)
+                raise
+            finally:
+                cache.delete(lock_key)
+        else:
+            cached_data = cache.get(data_key)
+            if cached_data:
+                return cached_data.get("properties", [])
+            return []
+
+    if force_sync or (not has_error and is_stale):
+        if cache.add(lock_key, "1", timeout=300):
             if force_sync or cache.add(rate_limit_key, "1", timeout=30):
                 from .tasks import refresh_hubspot_properties_task
 
@@ -67,9 +91,6 @@ def get_hubspot_properties(
                 )
             else:
                 cache.delete(lock_key)
-
-    if not cached_data:
-        return []
 
     return cached_data.get("properties", [])
 
@@ -86,8 +107,10 @@ def sync_hubspot_properties(event, object_type: str) -> list[dict]:
     headers = {"Authorization": f"Bearer {token}"}
     cursor = ""
     properties = []
+    lock_key = f"hubspot_properties_lock_{event.id}_{object_type}"
 
     while True:
+        cache.set(lock_key, "1", timeout=300)
         params = {}
         if cursor:
             params["after"] = cursor

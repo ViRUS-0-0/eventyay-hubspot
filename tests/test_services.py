@@ -106,7 +106,12 @@ def test_sync_hubspot_properties_success_and_cache(
             {"name": "is_active", "label": "Is Active", "type": "bool"},
         ]
     }
-    mock_get.side_effect = [mock_response_1, mock_response_2]
+    mock_get.side_effect = [
+        mock_response_1,
+        mock_response_2,
+        mock_response_1,
+        mock_response_2,
+    ]
 
     # Test sync_hubspot_properties directly to verify API parsing
     with scope(organizer=event.organizer):
@@ -121,12 +126,14 @@ def test_sync_hubspot_properties_success_and_cache(
     assert properties[1] == {"key": "age", "label": "Age", "data_type": "number"}
     assert mock_get.call_count == 2
 
-    # Test get_hubspot_properties first-fetch behavior
+    # Test get_hubspot_properties first-fetch behavior (should fetch synchronously when cold)
+    cache.clear()
     with scope(organizer=event.organizer):
         properties2 = get_hubspot_properties(event, "contact")
 
-    assert properties2 == []
-    mock_task.assert_called_once_with(args=[event.id, "contact"])
+    assert len(properties2) == 4
+    assert mock_get.call_count == 4
+    mock_task.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -175,19 +182,33 @@ def test_sync_hubspot_properties_api_failure(mock_get, event, hubspot_token, cap
 
 @pytest.mark.django_db
 @mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
-def test_get_hubspot_properties_error_suppression(mock_task, event, hubspot_token):
+@mock.patch("hubspot.services.requests.get")
+def test_get_hubspot_properties_error_suppression(
+    mock_get, mock_task, event, hubspot_token
+):
     cache.clear()
     error_key = f"hubspot_properties_error_{event.id}_contact"
     cache.set(error_key, "Max retries exceeded")
 
-    # When error_key is set and force_sync is False, get_hubspot_properties should not trigger celery task
+    # When error_key is set and force_sync is False, get_hubspot_properties should not fetch synchronously or trigger task
     with scope(organizer=event.organizer):
         props = get_hubspot_properties(event, "contact", force_sync=False)
 
     assert props == []
     mock_task.assert_not_called()
+    mock_get.assert_not_called()
 
-    # When force_sync is True, error_key is cleared and task is triggered
+    # When force_sync is True on stale cache, error_key is cleared and task is triggered
+    data_key = f"hubspot_properties_{event.id}_contact"
+    cache.set(
+        data_key,
+        {
+            "fetched_at": now() - datetime.timedelta(minutes=15),
+            "properties": [
+                {"key": "firstname", "label": "First Name", "data_type": "text"}
+            ],
+        },
+    )
     with scope(organizer=event.organizer):
         get_hubspot_properties(event, "contact", force_sync=True)
 
@@ -199,6 +220,17 @@ def test_get_hubspot_properties_error_suppression(mock_task, event, hubspot_toke
 @mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
 def test_get_hubspot_properties_auto_sync_rate_limit(mock_task, event, hubspot_token):
     cache.clear()
+    # Populate stale cache so background refresh is tested
+    data_key = f"hubspot_properties_{event.id}_contact"
+    cache.set(
+        data_key,
+        {
+            "fetched_at": now() - datetime.timedelta(minutes=15),
+            "properties": [
+                {"key": "firstname", "label": "First Name", "data_type": "text"}
+            ],
+        },
+    )
     with scope(organizer=event.organizer):
         get_hubspot_properties(event, "contact", force_sync=False)
 

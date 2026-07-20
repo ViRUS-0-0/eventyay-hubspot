@@ -235,7 +235,15 @@ def resolve_hubspot_properties(
         hubspot_props_dict = {p["key"]: p for p in hubspot_props}
     except HubSpotFetchError as e:
         logger.error(f"Could not load HubSpot properties: {e}")
-        return {}
+        raise HubSpotTransientError(f"Could not load HubSpot properties: {e}") from e
+
+    if not hubspot_props_dict and field_mappings.exists():
+        logger.warning(
+            f"No HubSpot properties found for {object_mapping.hubspot_object_type} on event {object_mapping.event.id}, but field mappings exist."
+        )
+        raise HubSpotTransientError(
+            f"HubSpot properties not available for {object_mapping.hubspot_object_type}."
+        )
 
     for mapping in field_mappings:
         val = None
@@ -628,7 +636,7 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
 
         try:
             if self.request.retries < self.max_retries:
-                cache.set(lock_key, "1", timeout=int(delay + 60))
+                cache.set(lock_key, "1", timeout=int(delay + 300))
             raise self.retry(exc=e, countdown=delay)
         except self.MaxRetriesExceededError:
             cache.set(error_key, str(e), timeout=3600)
