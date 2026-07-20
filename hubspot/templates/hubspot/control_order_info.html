@@ -1,0 +1,54 @@
+{% load i18n %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <h3 class="panel-title">
+            {% trans "HubSpot Sync Status" %}
+        </h3>
+    </div>
+    <div class="panel-body">
+        {% if has_mapping_changes %}
+        <div class="alert alert-info">
+            {% trans "The HubSpot mapping configuration has been updated since this order was last synced. You may want to sync again." %}
+        </div>
+        {% endif %}
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span style="margin-right: 20px;">
+                    <strong>{% trans "Status:" %}</strong> <span class="{{ status_class }}">{{ status_text }}</span>
+                </span>
+                {% if last_synced_at %}
+                <span>
+                    <strong>{% trans "Last synced at:" %}</strong> {{ last_synced_at|date:"Y-m-d H:i:s" }}
+                </span>
+                {% endif %}
+            </div>
+            
+            <form action="{% url "plugins:hubspot:sync_order" organizer=event.organizer.slug event=event.slug order=order.code %}" method="post" style="margin: 0;">
+                {% csrf_token %}
+                {% if not can_sync %}
+                    <button type="button" class="btn btn-primary sync-now-btn" disabled data-toggle="tooltip" title="{% trans "You do not have permission to sync orders." %}">
+                        {% trans "Sync now" %}
+                    </button>
+                {% elif is_connected %}
+                    {% if not is_paid %}
+                    <button type="button" class="btn btn-primary sync-now-btn" disabled data-toggle="tooltip" title="{% trans "Order must be paid to sync." %}">
+                        {% trans "Sync now" %}
+                    </button>
+                    {% elif sync_needed %}
+                    <button type="button" class="btn btn-primary sync-now-btn" onclick="this.innerHTML='{% trans "Queued" %}'; this.disabled=true; this.form.submit();">
+                        {% trans "Sync now" %}
+                    </button>
+                    {% else %}
+                    <button type="button" class="btn btn-primary sync-now-btn" disabled data-toggle="tooltip" title="{% trans "Order is already synced and no mapping changes detected." %}">
+                        {% trans "Sync now" %}
+                    </button>
+                    {% endif %}
+                {% else %}
+                    <button type="button" class="btn btn-primary" disabled data-toggle="tooltip" title="{% trans "HubSpot is not connected for this event." %}">
+                        {% trans "Sync now" %}
+                    </button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>

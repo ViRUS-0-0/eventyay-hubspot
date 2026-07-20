@@ -15,6 +15,7 @@ from hubspot.views import (
     RetryAllFailedView,
     SyncRetryBulkView,
     DismissSyncView,
+    SyncOrderNowView,
 )
 
 urlpatterns = [
@@ -77,6 +78,11 @@ urlpatterns = [
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/sync-problems/dismiss/<int:log_id>/",
         DismissSyncView.as_view(),
         name="sync_dismiss",
+    ),
+    path(
+        "control/event/<orgslug:organizer>/<slug:event>/hubspot/sync-order/<str:order>/",
+        SyncOrderNowView.as_view(),
+        name="sync_order",
     ),
     path(
         "common/organizer/<orgslug:organizer>/hubspot/",

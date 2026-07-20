@@ -1,5 +1,6 @@
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from django.template.loader import get_template
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from django.contrib.contenttypes.models import ContentType
@@ -8,13 +9,16 @@ from eventyay.base.models import Order, OrderPosition
 from eventyay.base.signals import periodic_task
 from django.db import transaction
 from eventyay.control.signals import nav_event, nav_organizer
+from eventyay.control.signals import order_info
 from django_scopes import scope
 from eventyay.base.signals import order_placed, order_paid, order_canceled
 from .tasks import sync_order_to_hubspot
 from .models import (
+    HubSpotEventSettings,
     ObjectTypeMapping,
     HubSpotFieldMapping,
     HubSpotObjectMapping,
+    HubSpotOAuthToken,
     AuditLog,
     SyncLog,
     SyncAction,
@@ -94,7 +98,8 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
                             direction=SyncDirection.PUSH,
                             status=SyncStatus.PENDING,
                             detail={
-                                "message": f"Auto-sync disabled, sync pending for order {order.code}"
+                                "message": f"Auto-sync disabled, sync pending for order {order.code}",
+                                "order_code": order.code,
                             },
                         )
 
@@ -166,3 +171,119 @@ def clear_audit_logs(sender, **kwargs):
     threshold = now() - timedelta(days=days)
     AuditLog.objects.filter(created_at__lt=threshold).delete()
     SyncLog.objects.filter(created_at__lt=threshold).delete()
+
+
+@receiver(order_info, dispatch_uid="hubspot_control_order_info")
+def control_order_info(sender, request, order, **kwargs):
+    if not request.user.has_event_permission(
+        request.organizer, request.event, "can_view_orders", request
+    ):
+        return ""
+
+    is_connected = False
+    has_token = HubSpotOAuthToken.objects.filter(event=order.event).exists()
+    settings = HubSpotEventSettings.objects.filter(event=order.event).first()
+    if settings and settings.sync_enabled and has_token:
+        is_connected = True
+
+    status_text = _("Not synced yet")
+    status_class = "label label-default"
+    last_synced_at = None
+    sync_needed = True
+
+    content_type_order = ContentType.objects.get_for_model(Order)
+    content_type_position = ContentType.objects.get_for_model(OrderPosition)
+
+    order_mapping = HubSpotObjectMapping.objects.filter(
+        event=order.event, content_type=content_type_order, object_id=order.id
+    ).first()
+
+    position_ids = order.positions.values_list("id", flat=True)
+    position_mappings = HubSpotObjectMapping.objects.filter(
+        event=order.event,
+        content_type=content_type_position,
+        object_id__in=position_ids,
+    )
+
+    mappings = []
+    if order_mapping:
+        mappings.append(order_mapping)
+    mappings.extend(position_mappings)
+
+    if mappings:
+        mapping_ids = [m.id for m in mappings]
+        latest_log = (
+            SyncLog.objects.filter(object_mapping_id__in=mapping_ids)
+            .order_by("-created_at")
+            .first()
+        )
+        last_synced_at = max(
+            (m.last_synced_at for m in mappings if m.last_synced_at is not None),
+            default=None,
+        )
+
+        if latest_log:
+            if latest_log.status == SyncStatus.SUCCESS:
+                status_text = _("Synced")
+                status_class = "label label-success"
+            elif latest_log.status == SyncStatus.FAILED:
+                status_text = _("Failed — could not reach HubSpot")
+                status_class = "label label-danger"
+            elif latest_log.status == SyncStatus.PENDING:
+                status_text = _("Waiting to sync")
+                status_class = "label label-warning"
+    else:
+        pending_log = SyncLog.objects.filter(
+            event=order.event,
+            status=SyncStatus.PENDING,
+            detail__order_code=order.code,
+        ).first()
+
+        if pending_log:
+            status_text = _("Waiting to sync")
+            status_class = "label label-warning"
+
+    has_mapping_changes = False
+    if status_text == _("Synced"):
+        active_types = ObjectTypeMapping.objects.filter(
+            event=order.event, eventyay_object_type__in=["order", "order_position"]
+        )
+        if active_types.exists() and last_synced_at:
+            for otm in active_types:
+                if last_synced_at < otm.updated_at:
+                    has_mapping_changes = True
+                    break
+
+            if not has_mapping_changes:
+                active_fields = HubSpotFieldMapping.objects.filter(
+                    event=order.event,
+                    content_type__in=[content_type_order, content_type_position],
+                    is_active=True,
+                )
+                for fm in active_fields:
+                    if last_synced_at < fm.updated_at:
+                        has_mapping_changes = True
+                        break
+
+            if not has_mapping_changes:
+                sync_needed = False
+
+    can_sync = request.user.has_event_permission(
+        request.organizer, request.event, "can_change_event_settings", request
+    )
+
+    template = get_template("hubspot/control_order_info.html")
+    ctx = {
+        "order": order,
+        "request": request,
+        "event": sender,
+        "is_connected": is_connected,
+        "is_paid": order.status == Order.STATUS_PAID,
+        "status_text": status_text,
+        "status_class": status_class,
+        "last_synced_at": last_synced_at,
+        "sync_needed": sync_needed,
+        "has_mapping_changes": has_mapping_changes,
+        "can_sync": can_sync,
+    }
+    return template.render(ctx, request=request)
