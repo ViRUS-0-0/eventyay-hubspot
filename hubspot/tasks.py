@@ -613,6 +613,7 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
 
     data_key = f"hubspot_properties_{event.id}_{object_type}"
     lock_key = f"hubspot_properties_lock_{event.id}_{object_type}"
+    manual_sync_lock_key = f"hubspot_manual_sync_lock_{event.id}_{object_type}"
     error_key = f"hubspot_properties_error_{event.id}_{object_type}"
 
     try:
@@ -623,6 +624,7 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
         )
         cache.delete(error_key)
         cache.delete(lock_key)
+        cache.delete(manual_sync_lock_key)
     except HubSpotFetchError as e:
         delay = 2**self.request.retries
         retry_after = getattr(e, "retry_after", None)
@@ -633,6 +635,7 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
             # Max retries exceeded
             cache.set(error_key, str(e), timeout=3600)  # error visible for 1 hour
             cache.delete(lock_key)
+            cache.delete(manual_sync_lock_key)
 
         try:
             if self.request.retries < self.max_retries:
@@ -641,7 +644,10 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
         except self.MaxRetriesExceededError:
             cache.set(error_key, str(e), timeout=3600)
             cache.delete(lock_key)
+            cache.delete(manual_sync_lock_key)
+            raise
     except Exception as e:
         cache.set(error_key, str(e), timeout=3600)
         cache.delete(lock_key)
+        cache.delete(manual_sync_lock_key)
         raise

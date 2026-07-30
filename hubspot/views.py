@@ -391,6 +391,8 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
         cache.delete(f"hubspot_properties_error_{request.event.id}_deals")
         cache.delete(f"hubspot_properties_lock_{request.event.id}_contacts")
         cache.delete(f"hubspot_properties_lock_{request.event.id}_deals")
+        cache.delete(f"hubspot_manual_sync_lock_{request.event.id}_contacts")
+        cache.delete(f"hubspot_manual_sync_lock_{request.event.id}_deals")
         cache.delete(f"hubspot_auto_sync_limit_{request.event.id}_contacts")
         cache.delete(f"hubspot_auto_sync_limit_{request.event.id}_deals")
 
@@ -559,7 +561,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
 
         is_fetching_properties = (
             cache.get(
-                f"hubspot_properties_lock_{request.event.id}_{mapping.hubspot_object_type}"
+                f"hubspot_manual_sync_lock_{request.event.id}_{mapping.hubspot_object_type}"
             )
             is not None
         )
@@ -596,7 +598,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             if cache.add(rate_limit_key, "1", timeout=30):
                 error_key = f"hubspot_properties_error_{request.event.id}_{mapping.hubspot_object_type}"
                 cache.delete(error_key)
-                lock_key = f"hubspot_properties_lock_{request.event.id}_{mapping.hubspot_object_type}"
+                lock_key = f"hubspot_manual_sync_lock_{request.event.id}_{mapping.hubspot_object_type}"
                 cache.add(lock_key, "1", timeout=60)
 
                 from .tasks import refresh_hubspot_properties_task
