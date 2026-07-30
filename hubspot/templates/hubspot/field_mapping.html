@@ -19,7 +19,7 @@
         </a>
     </h1>
 
-    <form method="post" action="" class="form-horizontal">
+    <form method="post" action="" class="form-horizontal" id="field-mapping-form" data-is-fetching="{% if is_fetching_properties %}true{% else %}false{% endif %}">
         {% csrf_token %}
         {{ formset.management_form }}
 

@@ -1,5 +1,4 @@
 import pytest
-import uuid
 from unittest import mock
 from django.contrib.contenttypes.models import ContentType
 from eventyay.base.models import InvoiceAddress
@@ -7,7 +6,6 @@ from hubspot.models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
     HubSpotObjectMapping,
-    HubSpotProperty,
     ObjectTypeMapping,
     SyncLog,
     SyncMode,
@@ -78,9 +76,13 @@ def test_sync_skipped_when_disabled(mock_create, mock_event, object_mapping, ord
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.create_record")
-def test_sync_order_success(mock_create, mock_event, object_mapping, order):
+def test_sync_order_success(
+    mock_create, mock_get_props, mock_event, object_mapping, order
+):
     mock_create.return_value = "hub_123"
+    mock_get_props.return_value = [{"key": "email", "data_type": "text"}]
 
     ct = ContentType.objects.get_for_model(order)
     HubSpotFieldMapping.objects.create(
@@ -90,13 +92,6 @@ def test_sync_order_success(mock_create, mock_event, object_mapping, order):
         hubspot_object_type="contacts",
         hubspot_property="email",
         sync_mode=SyncMode.IDENTIFIER,
-    )
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="email",
-        data_type="text",
-        sync_batch="00000000-0000-0000-0000-000000000000",
     )
 
     order.status = "p"
@@ -115,11 +110,20 @@ def test_sync_order_success(mock_create, mock_event, object_mapping, order):
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.get_record")
 @mock.patch("hubspot.tasks.update_record")
-def test_sync_modes(mock_update, mock_get_record, mock_event, object_mapping, order):
+def test_sync_modes(
+    mock_update, mock_get_record, mock_get_props, mock_event, object_mapping, order
+):
     mock_update.return_value = "hub_123"
     mock_get_record.return_value = {"company": "OldCompany", "phone": ""}
+
+    mock_get_props.return_value = [
+        {"key": "email", "data_type": "text"},
+        {"key": "amount", "data_type": "number"},
+        {"key": "locale", "data_type": "text"},
+    ]
 
     ct = ContentType.objects.get_for_model(order)
 
@@ -130,30 +134,6 @@ def test_sync_modes(mock_update, mock_get_record, mock_event, object_mapping, or
         object_id=order.id,
         hubspot_object_type="contacts",
         hubspot_object_id="hub_123",
-    )
-
-    # Add field mappings
-    dummy_batch = uuid.uuid4()
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="email",
-        data_type="text",
-        sync_batch=dummy_batch,
-    )
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="amount",
-        data_type="number",
-        sync_batch=dummy_batch,
-    )
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="locale",
-        data_type="text",
-        sync_batch=dummy_batch,
     )
 
     HubSpotFieldMapping.objects.create(
@@ -201,13 +181,19 @@ def test_sync_modes(mock_update, mock_get_record, mock_event, object_mapping, or
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.get_record")
 @mock.patch("hubspot.tasks.update_record")
 def test_sync_fill_if_empty(
-    mock_update, mock_get_record, mock_event, object_mapping, order
+    mock_update, mock_get_record, mock_get_props, mock_event, object_mapping, order
 ):
     mock_update.return_value = "hub_123"
     mock_get_record.return_value = {"phone": "", "company": "ExistingCorp"}
+
+    mock_get_props.return_value = [
+        {"key": "phone", "data_type": "text"},
+        {"key": "company", "data_type": "text"},
+    ]
 
     ct = ContentType.objects.get_for_model(order)
     HubSpotObjectMapping.objects.create(
@@ -216,22 +202,6 @@ def test_sync_fill_if_empty(
         object_id=order.id,
         hubspot_object_type="contacts",
         hubspot_object_id="hub_123",
-    )
-
-    dummy_batch = uuid.uuid4()
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="phone",
-        data_type="text",
-        sync_batch=dummy_batch,
-    )
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="company",
-        data_type="text",
-        sync_batch=dummy_batch,
     )
 
     HubSpotFieldMapping.objects.create(
@@ -257,10 +227,6 @@ def test_sync_fill_if_empty(
 
     InvoiceAddress.objects.create(order=order, company="NewCorp")
 
-    # Wait, we need to save the order or mock it properly since `invoice_address` is a related model in Eventyay.
-    # Eventyay order.invoice_address is a relation. Let's create an invoice address if needed or just use another field.
-    # To be safe, we'll map event_name instead.
-
     HubSpotFieldMapping.objects.filter(hubspot_property="company").update(
         eventyay_field="event_name"
     )
@@ -276,23 +242,17 @@ def test_sync_fill_if_empty(
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.create_record")
 @mock.patch("hubspot.tasks.sync_order_to_hubspot.retry")
 def test_transient_error_retries(
-    mock_retry, mock_create, mock_event, object_mapping, order
+    mock_retry, mock_create, mock_get_props, mock_event, object_mapping, order
 ):
     mock_retry.side_effect = Retry()
     mock_create.side_effect = HubSpotTransientError("Timeout", retry_after_seconds=10)
+    mock_get_props.return_value = [{"key": "email", "data_type": "text"}]
 
     ct = ContentType.objects.get_for_model(order)
-
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="email",
-        data_type="text",
-        sync_batch=uuid.uuid4(),
-    )
 
     HubSpotFieldMapping.objects.create(
         event=mock_event,
@@ -314,19 +274,15 @@ def test_transient_error_retries(
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.create_record")
-def test_permanent_error_no_retry(mock_create, mock_event, object_mapping, order):
+def test_permanent_error_no_retry(
+    mock_create, mock_get_props, mock_event, object_mapping, order
+):
     mock_create.side_effect = HubSpotPermanentError("Invalid data", status_code=400)
+    mock_get_props.return_value = [{"key": "email", "data_type": "text"}]
 
     ct = ContentType.objects.get_for_model(order)
-
-    HubSpotProperty.objects.create(
-        event=mock_event,
-        object_type="contacts",
-        key="email",
-        data_type="text",
-        sync_batch=uuid.uuid4(),
-    )
 
     HubSpotFieldMapping.objects.create(
         event=mock_event,
@@ -337,7 +293,6 @@ def test_permanent_error_no_retry(mock_create, mock_event, object_mapping, order
         sync_mode=SyncMode.IDENTIFIER,
     )
 
-    # Should not raise Retry, but should silently record failure
     order.status = "p"
     order.save()
     sync_order_to_hubspot(order.id, mock_event.id)
@@ -345,3 +300,42 @@ def test_permanent_error_no_retry(mock_create, mock_event, object_mapping, order
     logs = SyncLog.objects.filter(event=mock_event)
     assert logs.count() == 1
     assert logs.first().status == SyncStatus.FAILED
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.sync_hubspot_properties")
+def test_refresh_hubspot_properties_task_retries_and_error(mock_sync, mock_event):
+    from hubspot.tasks import refresh_hubspot_properties_task
+    from hubspot.services import HubSpotFetchError
+    from django.core.cache import cache
+
+    cache.clear()
+    assert refresh_hubspot_properties_task.max_retries == 3
+
+    # Test retry mechanism and lock preservation on failure before max retries
+    mock_sync.side_effect = HubSpotFetchError("Rate limited")
+    lock_key = f"hubspot_properties_lock_{mock_event.id}_contact"
+    error_key = f"hubspot_properties_error_{mock_event.id}_contact"
+
+    cache.set(lock_key, "1")
+
+    with mock.patch.object(refresh_hubspot_properties_task, "retry") as mock_retry:
+        mock_retry.side_effect = Exception("RetryCalled")
+        with pytest.raises(Exception, match="RetryCalled"):
+            refresh_hubspot_properties_task(mock_event.id, "contact")
+
+        # Before reaching max retries, error_key should not be set, and lock_key should still be preserved
+        assert cache.get(error_key) is None
+        assert cache.get(lock_key) is not None
+
+    # Test max retries exceeded behavior
+    cache.set(lock_key, "1")
+    with mock.patch.object(refresh_hubspot_properties_task.request, "retries", 3):
+        try:
+            refresh_hubspot_properties_task(mock_event.id, "contact")
+        except Exception:
+            pass
+
+        # Error should be set and lock should be released when retries are exhausted
+        assert cache.get(error_key) == "Rate limited"
+        assert cache.get(lock_key) is None
