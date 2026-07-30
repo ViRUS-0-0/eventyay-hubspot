@@ -194,6 +194,7 @@ class HubSpotFieldMappingForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         eventyay_fields = kwargs.pop("eventyay_fields", [])
         hubspot_properties = kwargs.pop("hubspot_properties", [])
+        is_fetching_properties = kwargs.pop("is_fetching_properties", False)
         super().__init__(*args, **kwargs)
         self.warnings = []
 
@@ -203,7 +204,11 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         }
 
         ey_choices = self._build_choices(eventyay_fields)
-        hs_choices = self._build_choices(hubspot_properties)
+
+        if is_fetching_properties:
+            hs_choices = [("", _("Loading properties..."))]
+        else:
+            hs_choices = self._build_choices(hubspot_properties)
 
         self.fields["eventyay_field"].widget = forms.Select(choices=ey_choices)
         self.fields["hubspot_property"].widget = forms.Select(choices=hs_choices)
