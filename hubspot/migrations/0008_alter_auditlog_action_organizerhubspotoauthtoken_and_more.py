@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("base", "0048_alter_team_can_video_manage_users_and_more"),
+        ("base", "0047_team_can_manage_social_media"),
         ("hubspot", "0007_alter_hubspotpropertysyncstate_unique_together_and_more"),
     ]
 
