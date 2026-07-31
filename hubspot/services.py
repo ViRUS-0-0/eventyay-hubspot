@@ -308,20 +308,26 @@ def get_valid_hubspot_token(event) -> str | None:
 
 def is_sync_enabled(event) -> bool:
     """
-    Returns True if HubSpot sync is enabled for the event or its organizer.
+    Returns True if HubSpot sync is enabled and a valid token exists
+    for the event or its organizer.
     """
     try:
         if HubSpotEventSettings.objects.get(event=event).sync_enabled:
-            return True
+            if HubSpotOAuthToken.objects.filter(event=event).exists():
+                return True
     except HubSpotEventSettings.DoesNotExist:
         pass
 
     try:
-        return OrganizerHubSpotSettings.objects.get(
-            organizer=event.organizer
-        ).sync_enabled
+        if OrganizerHubSpotSettings.objects.get(organizer=event.organizer).sync_enabled:
+            if OrganizerHubSpotOAuthToken.objects.filter(
+                organizer=event.organizer
+            ).exists():
+                return True
     except OrganizerHubSpotSettings.DoesNotExist:
-        return False
+        pass
+
+    return False
 
 
 def is_auto_sync_enabled(event) -> bool:

@@ -92,10 +92,19 @@ class EventHubSpotSettingsView(EventPermissionRequiredMixin, TemplateView):
         try:
             token = self.request.event.hubspotoauthtoken
             context["is_connected"] = True
+            context["connected_via"] = "event"
             context["hub_name"] = token.hub_name
             context["hub_id"] = token.hub_id
         except HubSpotOAuthToken.DoesNotExist:
-            context["is_connected"] = False
+            try:
+                org_token = self.request.event.organizer.organizerhubspotoauthtoken
+                context["is_connected"] = True
+                context["connected_via"] = "organizer"
+                context["hub_name"] = org_token.hub_name
+                context["hub_id"] = org_token.hub_id
+            except OrganizerHubSpotOAuthToken.DoesNotExist:
+                context["is_connected"] = False
+                context["connected_via"] = None
 
         if "formset" not in context:
             context["formset"] = self._get_formset()
@@ -1215,6 +1224,14 @@ class OrganizerHubSpotDisconnectView(OrganizerPermissionRequiredMixin, View):
             OrganizerHubSpotSettings.objects.filter(organizer=request.organizer).update(
                 sync_enabled=False
             )
+
+            events_with_tokens = HubSpotOAuthToken.objects.filter(
+                event__organizer=request.organizer
+            ).values_list("event_id", flat=True)
+            HubSpotEventSettings.objects.filter(
+                event__organizer=request.organizer
+            ).exclude(event_id__in=events_with_tokens).update(sync_enabled=False)
+
             AuditLog.objects.create(
                 organizer=request.organizer,
                 event=None,
