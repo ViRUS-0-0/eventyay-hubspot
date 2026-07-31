@@ -18,8 +18,8 @@
             <form method="post" action="{% url "plugins:hubspot:org_hubspot" organizer=request.organizer.slug %}" id="hubspot-toggle-form">
                 {% csrf_token %}
                 <input type="hidden" name="form_type" value="toggle">
-                <div class="toggle-wrapper" style="margin-top: 25px;">
-                    <label class="hubspot-toggle" style="vertical-align: middle;">
+                <div class="toggle-wrapper organizer-toggle-wrapper">
+                    <label class="hubspot-toggle">
                         <input type="checkbox" name="sync_enabled" {% if sync_enabled %}checked{% endif %} onchange="document.getElementById('hubspot-toggle-form').submit();">
                         <span class="slider"></span>
                     </label>

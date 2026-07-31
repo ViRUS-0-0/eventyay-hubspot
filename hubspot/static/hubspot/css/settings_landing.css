@@ -109,3 +109,7 @@
 .sync-status-banner .btn {
     margin-left: auto;
 }
+.organizer-toggle-wrapper {
+    margin-top: 25px;
+    justify-content: flex-end;
+}
