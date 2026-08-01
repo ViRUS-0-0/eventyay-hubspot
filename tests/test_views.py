@@ -8,13 +8,10 @@ from eventyay.base.models import Event, Organizer
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotOAuthToken,
-    HubSpotProperty,
-    HubSpotPropertySyncState,
     ObjectTypeMapping,
     OrganizerHubSpotSettings,
     OrganizerHubSpotOAuthToken,
 )
-import uuid
 import requests
 
 
@@ -89,13 +86,10 @@ def test_hubspot_disconnect_view_connected(
     mock_delete.return_value = mock_response
 
     with scope(organizer=event.organizer):
-        batch = uuid.uuid4()
-        HubSpotProperty.objects.create(
-            event=event, object_type="contact", key="test", sync_batch=batch
-        )
-        HubSpotPropertySyncState.objects.create(
-            event=event, object_type="contact", sync_batch=batch
-        )
+        from django.core.cache import cache
+
+        cache.set(f"hubspot_properties_{event.id}_contacts", [{"key": "test"}])
+        cache.set(f"hubspot_properties_error_{event.id}_contacts", "Error")
 
     url = reverse(
         "plugins:hubspot:disconnect",
@@ -111,8 +105,10 @@ def test_hubspot_disconnect_view_connected(
 
     with scope(organizer=event.organizer):
         assert not HubSpotOAuthToken.objects.filter(event=event).exists()
-        assert not HubSpotProperty.objects.filter(event=event).exists()
-        assert not HubSpotPropertySyncState.objects.filter(event=event).exists()
+        from django.core.cache import cache
+
+        assert not cache.get(f"hubspot_properties_{event.id}_contacts")
+        assert not cache.get(f"hubspot_properties_error_{event.id}_contacts")
 
 
 @pytest.mark.django_db

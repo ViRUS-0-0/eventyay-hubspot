@@ -5,7 +5,12 @@ from django.urls import reverse
 
 from django_scopes import scope
 
-from hubspot.models import HubSpotOAuthToken, SyncLog, SyncAction
+from hubspot.models import (
+    HubSpotOAuthToken,
+    SyncLog,
+    SyncAction,
+    OrganizerHubSpotOAuthToken,
+)
 
 
 @pytest.mark.django_db
@@ -141,3 +146,70 @@ def test_callback_view_api_error(
     assert any("Failed to exchange token with HubSpot" in str(m) for m in messages)
     with scope(organizer=organizer):
         assert not HubSpotOAuthToken.objects.filter(event=event).exists()
+
+
+@pytest.mark.django_db
+def test_org_connect_view_redirects_to_hubspot(
+    logged_in_organizer_client, organizer, settings
+):
+    team = organizer.teams.first()
+    team.can_change_organizer_settings = True
+    team.save()
+
+    settings.SITE_URL = "https://testserver"
+    url = reverse(
+        "plugins:hubspot:org_connect",
+        kwargs={"organizer": organizer.slug},
+    )
+    response = logged_in_organizer_client.get(url)
+    assert response.status_code == 302
+    assert "https://app.hubspot.com/oauth/authorize" in response.url
+    assert "client_id=" in response.url
+    assert "state=" in response.url
+
+    assert "hubspot_oauth_state" in logged_in_organizer_client.session
+
+
+@pytest.mark.django_db
+@responses.activate
+def test_callback_view_success_organizer(
+    logged_in_organizer_client, organizer, settings
+):
+    team = organizer.teams.first()
+    team.can_change_organizer_settings = True
+    team.save()
+
+    settings.SITE_URL = "https://testserver"
+
+    responses.add(
+        responses.POST,
+        "https://api.hubapi.com/oauth/v1/token",
+        json={
+            "access_token": "org_acc_123",
+            "refresh_token": "org_ref_123",
+            "expires_in": 1800,
+            "token_type": "bearer",
+        },
+        status=200,
+    )
+
+    session = logged_in_organizer_client.session
+    session["hubspot_oauth_state"] = "valid_state"
+    session.save()
+
+    url = reverse("plugins:hubspot:callback")
+    state_param = f"valid_state:{organizer.slug}"
+    response = logged_in_organizer_client.get(
+        url, {"state": state_param, "code": "auth_code"}
+    )
+
+    assert response.status_code == 302
+    assert response.url == reverse(
+        "plugins:hubspot:org_hubspot",
+        kwargs={"organizer": organizer.slug},
+    )
+
+    with scope(organizer=organizer):
+        token = OrganizerHubSpotOAuthToken.objects.get(organizer=organizer)
+        assert token.access_token == "org_acc_123"
+        assert token.refresh_token == "org_ref_123"

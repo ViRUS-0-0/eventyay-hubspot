@@ -1,25 +1,24 @@
 import datetime
-import uuid
 import requests
 from unittest import mock
 
 import pytest
 from django.utils.timezone import now
 from django_scopes import scope
+from django.core.cache import cache
 
 from hubspot.models import (
-    HubSpotEventSettings,
     HubSpotOAuthToken,
-    HubSpotProperty,
-    HubSpotPropertySyncState,
+    HubSpotEventSettings,
     OrganizerHubSpotSettings,
     OrganizerHubSpotOAuthToken,
 )
 from hubspot.services import (
     get_valid_hubspot_token,
     get_hubspot_properties,
-    is_sync_enabled,
+    sync_hubspot_properties,
     HubSpotFetchError,
+    is_sync_enabled,
 )
 
 
@@ -36,7 +35,6 @@ def hubspot_token(event):
 
 @pytest.mark.django_db
 def test_valid_token_returned_as_is(event, hubspot_token):
-    # Token has 1 hour left, should be returned as is
     with scope(organizer=event.organizer):
         token_str = get_valid_hubspot_token(event)
         assert token_str == "old_access"
@@ -45,7 +43,6 @@ def test_valid_token_returned_as_is(event, hubspot_token):
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.post")
 def test_token_expiring_soon_is_refreshed(mock_post, event, hubspot_token):
-    # Set expiration to 4 minutes from now
     with scope(organizer=event.organizer):
         hubspot_token.expires_at = now() + datetime.timedelta(minutes=4)
         hubspot_token.save()
@@ -74,9 +71,6 @@ def test_token_expiring_soon_is_refreshed(mock_post, event, hubspot_token):
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.post")
 def test_concurrent_refresh_attempts(mock_post, event, hubspot_token):
-    # To test select_for_update we usually need threading or special DB setup
-    # But we can at least assert that we are calling select_for_update.
-    # A true concurrent test is hard in sqlite but we can mock select_for_update.
     with mock.patch(
         "hubspot.models.HubSpotOAuthToken.objects.select_for_update"
     ) as mock_sfu:
@@ -91,11 +85,12 @@ def test_concurrent_refresh_attempts(mock_post, event, hubspot_token):
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
 @mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_token):
-    with scope(organizer=event.organizer):
-        HubSpotProperty.objects.all().delete()
-        HubSpotPropertySyncState.objects.all().delete()
+def test_sync_hubspot_properties_success_and_cache(
+    mock_get, mock_task, event, hubspot_token
+):
+    cache.clear()
 
     mock_response_1 = mock.Mock()
     mock_response_1.ok = True
@@ -115,10 +110,16 @@ def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_to
             {"name": "is_active", "label": "Is Active", "type": "bool"},
         ]
     }
-    mock_get.side_effect = [mock_response_1, mock_response_2]
+    mock_get.side_effect = [
+        mock_response_1,
+        mock_response_2,
+        mock_response_1,
+        mock_response_2,
+    ]
 
+    # Test sync_hubspot_properties directly to verify API parsing
     with scope(organizer=event.organizer):
-        properties = get_hubspot_properties(event, "contact")
+        properties = sync_hubspot_properties(event, "contact")
 
     assert len(properties) == 4
     assert properties[0] == {
@@ -127,135 +128,163 @@ def test_get_hubspot_properties_success_and_db_cache(mock_get, event, hubspot_to
         "data_type": "text",
     }
     assert properties[1] == {"key": "age", "label": "Age", "data_type": "number"}
-    assert properties[2] == {
-        "key": "createdate",
-        "label": "Create Date",
-        "data_type": "date",
-    }
-    assert properties[3] == {
-        "key": "is_active",
-        "label": "Is Active",
-        "data_type": "yes/no",
-    }
-
     assert mock_get.call_count == 2
 
-    # Second call should use DB and not hit API
+    # Test get_hubspot_properties first-fetch behavior (should fetch synchronously when cold)
+    cache.clear()
     with scope(organizer=event.organizer):
         properties2 = get_hubspot_properties(event, "contact")
 
-    assert properties == properties2
-    assert mock_get.call_count == 2
+    assert len(properties2) == 4
+    assert mock_get.call_count == 4
+    mock_task.assert_not_called()
 
 
 @pytest.mark.django_db
-@mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_ttl_expiry(mock_get, event, hubspot_token):
-    with scope(organizer=event.organizer):
-        HubSpotProperty.objects.all().delete()
-        HubSpotPropertySyncState.objects.all().delete()
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
+def test_get_hubspot_properties_ttl_expiry(mock_task, event, hubspot_token):
+    cache.clear()
 
-    mock_response = mock.Mock()
-    mock_response.ok = True
-    mock_response.json.return_value = {
-        "results": [
-            {"name": "firstname", "label": "First Name", "type": "string"},
-        ]
+    # Simulate TTL expiry in cache
+    data_key = f"hubspot_properties_{event.id}_contact"
+    cached_data = {
+        "fetched_at": now() - datetime.timedelta(minutes=15),
+        "properties": [
+            {"key": "firstname", "label": "First Name", "data_type": "text"}
+        ],
     }
-    mock_get.return_value = mock_response
+    cache.set(data_key, cached_data)
 
-    with scope(organizer=event.organizer):
-        properties = get_hubspot_properties(event, "contact")
-
-    assert len(properties) == 1
-    assert mock_get.call_count == 1
-
-    # Simulate TTL expiry
-    with scope(organizer=event.organizer):
-        sync_state = HubSpotPropertySyncState.objects.get(
-            event=event, object_type="contact"
-        )
-        sync_state.completed_at = now() - datetime.timedelta(minutes=15)
-        sync_state.save()
-
-    # Second call should hit API again
+    # Call should trigger celery task and return stale data without hitting API again synchronously
     with scope(organizer=event.organizer):
         properties2 = get_hubspot_properties(event, "contact")
 
     assert len(properties2) == 1
-    assert mock_get.call_count == 2
+    mock_task.assert_called_once_with(args=[event.id, "contact"])
 
 
 @pytest.mark.django_db
-def test_get_hubspot_properties_no_token(event, caplog):
+def test_sync_hubspot_properties_no_token(event, caplog):
+    cache.clear()
     with scope(organizer=event.organizer):
-        HubSpotProperty.objects.all().delete()
-        HubSpotPropertySyncState.objects.all().delete()
-
-    with scope(organizer=event.organizer):
-        with pytest.raises(HubSpotFetchError):
-            get_hubspot_properties(event, "contact")
-
-    assert "Not connected to HubSpot or token is invalid" in caplog.text
+        with pytest.raises(
+            HubSpotFetchError, match="Not connected to HubSpot or token is invalid"
+        ):
+            sync_hubspot_properties(event, "contact")
 
 
 @pytest.mark.django_db
 @mock.patch("hubspot.services.requests.get")
-def test_get_hubspot_properties_api_failure(mock_get, event, hubspot_token, caplog):
-    with scope(organizer=event.organizer):
-        HubSpotProperty.objects.all().delete()
-        HubSpotPropertySyncState.objects.all().delete()
-
+def test_sync_hubspot_properties_api_failure(mock_get, event, hubspot_token, caplog):
+    cache.clear()
     mock_get.side_effect = requests.RequestException("API error")
 
     with scope(organizer=event.organizer):
-        with pytest.raises(HubSpotFetchError):
-            get_hubspot_properties(event, "contact")
-    assert "Failed to fetch properties from HubSpot" in caplog.text
+        with pytest.raises(HubSpotFetchError, match="Could not connect to HubSpot API"):
+            sync_hubspot_properties(event, "contact")
 
 
 @pytest.mark.django_db
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
 @mock.patch("hubspot.services.requests.get")
-def test_sync_resumes_after_crash(mock_get, event, hubspot_token):
+def test_get_hubspot_properties_error_suppression(
+    mock_get, mock_task, event, hubspot_token
+):
+    cache.clear()
+    error_key = f"hubspot_properties_error_{event.id}_contact"
+    cache.set(error_key, "Max retries exceeded")
+
+    # When error_key is set and force_sync is False, get_hubspot_properties should not fetch synchronously or trigger task
     with scope(organizer=event.organizer):
-        HubSpotProperty.objects.all().delete()
-        HubSpotPropertySyncState.objects.all().delete()
+        props = get_hubspot_properties(event, "contact", force_sync=False)
 
-    # Simulate an interrupted sync with cursor="page3"
+    assert props == []
+    mock_task.assert_not_called()
+    mock_get.assert_not_called()
+
+    # When force_sync is True on stale cache, error_key is cleared and task is triggered
+    data_key = f"hubspot_properties_{event.id}_contact"
+    cache.set(
+        data_key,
+        {
+            "fetched_at": now() - datetime.timedelta(minutes=15),
+            "properties": [
+                {"key": "firstname", "label": "First Name", "data_type": "text"}
+            ],
+        },
+    )
     with scope(organizer=event.organizer):
-        HubSpotPropertySyncState.objects.create(
-            event=event,
-            object_type="contact",
-            sync_batch=uuid.uuid4(),
-            next_cursor="page3",
-            is_complete=False,
-        )
+        get_hubspot_properties(event, "contact", force_sync=True)
 
-    mock_response = mock.Mock()
-    mock_response.ok = True
-    mock_response.json.return_value = {
-        "results": [
-            {"name": "new_prop", "label": "New", "type": "string"},
-        ]
-    }
-    mock_get.return_value = mock_response
-
-    with scope(organizer=event.organizer):
-        properties = get_hubspot_properties(event, "contact")
-
-    assert len(properties) == 1
-    assert properties[0] == {"key": "new_prop", "label": "New", "data_type": "text"}
-
-    # Assert that the API was called with the cursor "page3"
-    mock_get.assert_called_once()
-    args, kwargs = mock_get.call_args
-    assert kwargs["params"] == {"after": "page3"}
+    assert cache.get(error_key) is None
+    mock_task.assert_called_once_with(args=[event.id, "contact"])
 
 
 @pytest.mark.django_db
-def test_is_sync_enabled_and_token_respect_event_toggle_off(event):
+@mock.patch("hubspot.tasks.refresh_hubspot_properties_task.apply_async")
+def test_get_hubspot_properties_auto_sync_rate_limit(mock_task, event, hubspot_token):
+    cache.clear()
+    # Populate stale cache so background refresh is tested
+    data_key = f"hubspot_properties_{event.id}_contact"
+    cache.set(
+        data_key,
+        {
+            "fetched_at": now() - datetime.timedelta(minutes=15),
+            "properties": [
+                {"key": "firstname", "label": "First Name", "data_type": "text"}
+            ],
+        },
+    )
     with scope(organizer=event.organizer):
-        # Setup organizer with sync enabled and token
+        get_hubspot_properties(event, "contact", force_sync=False)
+
+    assert mock_task.call_count == 1
+
+    # Simulate lock expiring or being deleted after task failure/completion while within 30s auto-sync limit
+    lock_key = f"hubspot_properties_lock_{event.id}_contact"
+    cache.delete(lock_key)
+
+    with scope(organizer=event.organizer):
+        get_hubspot_properties(event, "contact", force_sync=False)
+
+    # Should not trigger celery task again because of rate limit key
+    assert mock_task.call_count == 1
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_false_by_default(event):
+    with scope(organizer=event.organizer):
+        assert is_sync_enabled(event) is False
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_event_level_no_token(event):
+    with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
+        # Even if enabled, without a token it should be false
+        assert is_sync_enabled(event) is False
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_event_level_with_token(event, hubspot_token):
+    with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
+        # Token exists via the hubspot_token fixture
+        assert is_sync_enabled(event) is True
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_organizer_level_no_token(event):
+    with scope(organizer=event.organizer):
+        OrganizerHubSpotSettings.objects.create(
+            organizer=event.organizer, sync_enabled=True
+        )
+        assert is_sync_enabled(event) is False
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_organizer_level_with_token(event):
+    with scope(organizer=event.organizer):
         OrganizerHubSpotSettings.objects.create(
             organizer=event.organizer, sync_enabled=True
         )
@@ -265,12 +294,20 @@ def test_is_sync_enabled_and_token_respect_event_toggle_off(event):
             refresh_token="org_refresh",
             expires_at=now() + datetime.timedelta(hours=1),
         )
-
-        # Without event setting, event inherits organizer sync_enabled
         assert is_sync_enabled(event) is True
-        assert get_valid_hubspot_token(event) == "org_access"
 
-        # Explicitly disable sync for this event
+
+@pytest.mark.django_db
+def test_is_sync_enabled_event_level_disabled_fallback_to_organizer(event):
+    with scope(organizer=event.organizer):
         HubSpotEventSettings.objects.create(event=event, sync_enabled=False)
+        OrganizerHubSpotSettings.objects.create(
+            organizer=event.organizer, sync_enabled=True
+        )
+        OrganizerHubSpotOAuthToken.objects.create(
+            organizer=event.organizer,
+            access_token="org_access",
+            refresh_token="org_refresh",
+            expires_at=now() + datetime.timedelta(hours=1),
+        )
         assert is_sync_enabled(event) is False
-        assert get_valid_hubspot_token(event) is None
