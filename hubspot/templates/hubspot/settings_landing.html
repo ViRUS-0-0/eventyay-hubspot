@@ -26,9 +26,6 @@
                     {% endif %}
                     {% if hub_name %}<strong>{{ hub_name }}</strong>{% endif %}
                     {% if hub_id %}(ID: {{ hub_id }}){% endif %}
-                    {% if connection_source == 'organizer' %}
-                        <span class="badge badge-info" style="margin-left: 5px;">{% translate "Organizer fallback" %}</span>
-                    {% endif %}
                 </p>
                 {% if connected_via == 'event' %}
                 <form method="post" action="{% url "plugins:hubspot:disconnect" organizer=request.event.organizer.slug event=request.event.slug %}">
