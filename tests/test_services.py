@@ -9,12 +9,16 @@ from django.core.cache import cache
 
 from hubspot.models import (
     HubSpotOAuthToken,
+    HubSpotEventSettings,
+    OrganizerHubSpotSettings,
+    OrganizerHubSpotOAuthToken,
 )
 from hubspot.services import (
     get_valid_hubspot_token,
     get_hubspot_properties,
     sync_hubspot_properties,
     HubSpotFetchError,
+    is_sync_enabled,
 )
 
 
@@ -245,3 +249,65 @@ def test_get_hubspot_properties_auto_sync_rate_limit(mock_task, event, hubspot_t
 
     # Should not trigger celery task again because of rate limit key
     assert mock_task.call_count == 1
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_false_by_default(event):
+    with scope(organizer=event.organizer):
+        assert is_sync_enabled(event) is False
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_event_level_no_token(event):
+    with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
+        # Even if enabled, without a token it should be false
+        assert is_sync_enabled(event) is False
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_event_level_with_token(event, hubspot_token):
+    with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
+        # Token exists via the hubspot_token fixture
+        assert is_sync_enabled(event) is True
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_organizer_level_no_token(event):
+    with scope(organizer=event.organizer):
+        OrganizerHubSpotSettings.objects.create(
+            organizer=event.organizer, sync_enabled=True
+        )
+        assert is_sync_enabled(event) is False
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_organizer_level_with_token(event):
+    with scope(organizer=event.organizer):
+        OrganizerHubSpotSettings.objects.create(
+            organizer=event.organizer, sync_enabled=True
+        )
+        OrganizerHubSpotOAuthToken.objects.create(
+            organizer=event.organizer,
+            access_token="org_access",
+            refresh_token="org_refresh",
+            expires_at=now() + datetime.timedelta(hours=1),
+        )
+        assert is_sync_enabled(event) is True
+
+
+@pytest.mark.django_db
+def test_is_sync_enabled_event_level_disabled_fallback_to_organizer(event):
+    with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=False)
+        OrganizerHubSpotSettings.objects.create(
+            organizer=event.organizer, sync_enabled=True
+        )
+        OrganizerHubSpotOAuthToken.objects.create(
+            organizer=event.organizer,
+            access_token="org_access",
+            refresh_token="org_refresh",
+            expires_at=now() + datetime.timedelta(hours=1),
+        )
+        assert is_sync_enabled(event) is True
