@@ -286,12 +286,13 @@ def get_valid_hubspot_token(event) -> str | None:
             pass
 
         # 2. Check Organizer settings
-        org_sync = (
-            OrganizerHubSpotSettings.objects.filter(organizer=event.organizer)
-            .values_list("sync_enabled", flat=True)
-            .first()
-        )
-        if not org_sync:
+        try:
+            org_settings = OrganizerHubSpotSettings.objects.get(
+                organizer=event.organizer
+            )
+            if not org_settings.sync_enabled:
+                return None
+        except OrganizerHubSpotSettings.DoesNotExist:
             return None
 
         # 3. Try Organizer token
@@ -344,10 +345,7 @@ def is_auto_sync_enabled(event) -> bool:
     """
     Returns True if auto sync is enabled for the event.
     """
-    with scope(organizer=event.organizer):
-        return (
-            HubSpotEventSettings.objects.filter(event=event)
-            .values_list("auto_sync_enabled", flat=True)
-            .first()
-            or False
-        )
+    try:
+        return HubSpotEventSettings.objects.get(event=event).auto_sync_enabled
+    except HubSpotEventSettings.DoesNotExist:
+        return False
