@@ -8,7 +8,7 @@ from django.core.cache import cache
 from eventyay.base.models import Order, OrderPosition
 from eventyay.base.signals import periodic_task
 from django.db import transaction
-from eventyay.control.signals import nav_event
+from eventyay.control.signals import nav_event, nav_organizer
 from eventyay.control.signals import order_info
 from django_scopes import scope
 from eventyay.base.signals import order_placed, order_paid, order_canceled
@@ -48,6 +48,25 @@ def control_nav_import(sender, request=None, **kwargs):
     ]
 
 
+@receiver(nav_organizer, dispatch_uid="hubspot_nav_org")
+def control_nav_organizer_hubspot(sender, request=None, **kwargs):
+    url = resolve(request.path_info)
+    return [
+        {
+            "label": _("HubSpot"),
+            "url": reverse(
+                "plugins:hubspot:org_hubspot",
+                kwargs={
+                    "organizer": request.organizer.slug,
+                },
+            ),
+            "active": url.namespace == "plugins:hubspot"
+            and url.url_name in ("org_hubspot", "org_connect", "org_disconnect"),
+            "icon": "bar-chart",
+        }
+    ]
+
+
 def _enqueue_hubspot_sync(sender, order, **kwargs):
     if not order:
         return
@@ -56,12 +75,17 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
         return
 
     with scope(organizer=order.event.organizer):
-        settings = HubSpotEventSettings.objects.filter(event=order.event).first()
-        if not settings or not settings.sync_enabled:
+        from .services import (
+            get_valid_hubspot_token,
+            is_sync_enabled,
+            is_auto_sync_enabled,
+        )
+
+        if not is_sync_enabled(order.event):
             return
-        if not HubSpotOAuthToken.objects.filter(event=order.event).exists():
+        if not get_valid_hubspot_token(order.event):
             return
-        if not settings.auto_sync_enabled:
+        if not is_auto_sync_enabled(order.event):
 
             def log_pending():
                 # Deduplicate multiple signals for the same order within a short window

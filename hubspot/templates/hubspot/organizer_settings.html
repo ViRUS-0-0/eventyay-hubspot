@@ -1,0 +1,60 @@
+{% extends "pretixcontrol/organizers/base.html" %}
+{% load i18n static %}
+
+{% block custom_header %}
+    <link rel="stylesheet" type="text/css" href="{% static "hubspot/css/settings_landing.css" %}">
+    <script type="text/javascript" src="{% static "hubspot/js/settings_landing.js" %}"></script>
+{% endblock %}
+
+{% block title %}{% translate "HubSpot Integration" %} :: {% endblock %}
+
+{% block inner %}
+    <div class="row">
+        <div class="col-md-9">
+            <h1>{% translate "HubSpot Integration" %}</h1>
+            <p>{% translate "Automatically transfer order and attendee data to your HubSpot CRM for all events under this organizer." %}</p>
+        </div>
+        <div class="col-md-3 text-right">
+            <form method="post" action="{% url "plugins:hubspot:org_hubspot" organizer=request.organizer.slug %}" id="hubspot-toggle-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="toggle">
+                <div class="toggle-wrapper organizer-toggle-wrapper">
+                    <label class="hubspot-toggle">
+                        <input type="checkbox" name="sync_enabled" {% if sync_enabled %}checked{% endif %} onchange="document.getElementById('hubspot-toggle-form').submit();">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if sync_enabled %}
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% translate "HubSpot Connection" %}</h3>
+        </div>
+        <div class="panel-body">
+            {% if is_connected %}
+                <p class="text-success">
+                    {% translate "Connected to" %}
+                    {% if hub_name %}<strong>{{ hub_name }}</strong>{% endif %}
+                    {% if hub_id %}(ID: {{ hub_id }}){% endif %}
+                </p>
+                <form method="post" action="{% url "plugins:hubspot:org_disconnect" organizer=request.organizer.slug %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        {% translate "Disconnect" %}
+                    </button>
+                </form>
+            {% else %}
+                <p>{% translate "This organizer is not yet connected to a HubSpot account." %}</p>
+                <div>
+                    <a href="{% url "plugins:hubspot:org_connect" organizer=request.organizer.slug %}" class="btn btn-primary">
+                        {% translate "Connect to HubSpot" %}
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+{% endblock %}

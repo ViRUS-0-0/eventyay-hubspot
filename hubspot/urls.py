@@ -7,6 +7,9 @@ from hubspot.views import (
     EventHubSpotSettingsView,
     EventHubSpotLogView,
     EventHubSpotSyncMappingView,
+    OrganizerHubSpotSettingsView,
+    OrganizerHubSpotConnectView,
+    OrganizerHubSpotDisconnectView,
     SyncProblemsView,
     RetrySyncView,
     RetryAllFailedView,
@@ -80,5 +83,20 @@ urlpatterns = [
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/sync-order/<str:order>/",
         SyncOrderNowView.as_view(),
         name="sync_order",
+    ),
+    path(
+        "common/organizer/<orgslug:organizer>/hubspot/",
+        OrganizerHubSpotSettingsView.as_view(),
+        name="org_hubspot",
+    ),
+    path(
+        "common/organizer/<orgslug:organizer>/hubspot/connect/",
+        OrganizerHubSpotConnectView.as_view(),
+        name="org_connect",
+    ),
+    path(
+        "common/organizer/<orgslug:organizer>/hubspot/disconnect/",
+        OrganizerHubSpotDisconnectView.as_view(),
+        name="org_disconnect",
     ),
 ]

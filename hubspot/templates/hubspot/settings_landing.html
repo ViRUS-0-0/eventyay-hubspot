@@ -19,16 +19,26 @@
         <div class="panel-body">
             {% if is_connected %}
                 <p class="text-success">
-                    {% translate "Connected to" %}
+                    {% if connected_via == 'organizer' %}
+                        {% translate "Connected via Organizer to" %}
+                    {% else %}
+                        {% translate "Connected to" %}
+                    {% endif %}
                     {% if hub_name %}<strong>{{ hub_name }}</strong>{% endif %}
                     {% if hub_id %}(ID: {{ hub_id }}){% endif %}
                 </p>
+                {% if connected_via == 'event' %}
                 <form method="post" action="{% url "plugins:hubspot:disconnect" organizer=request.event.organizer.slug event=request.event.slug %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger">
                         {% translate "Disconnect" %}
                     </button>
                 </form>
+                {% else %}
+                <p class="text-muted">
+                    {% translate "This event inherits the HubSpot connection from its organizer. You can manage this connection in the organizer settings." %}
+                </p>
+                {% endif %}
             {% else %}
                 <p>{% translate "This event is not yet connected to a HubSpot account." %}</p>
                 <div>
