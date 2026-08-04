@@ -334,10 +334,6 @@ def is_sync_enabled(event) -> bool:
             ).exists():
                 return True
 
-        # Fallback for tests that create tokens without settings
-        if HubSpotOAuthToken.objects.filter(event=event).exists():
-            return True
-
         return False
 
 
