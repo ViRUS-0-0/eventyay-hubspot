@@ -1,7 +1,7 @@
 import pytest
 from django.urls import reverse
 from django_scopes import scope
-from hubspot.models import HubSpotOAuthToken
+from hubspot.models import HubSpotOAuthToken, HubSpotEventSettings
 
 
 @pytest.mark.django_db
@@ -34,6 +34,7 @@ def test_connected_shows_disconnect_button_and_portal_info(
             hub_id="12345678",
             hub_name="my-portal.hubspot.com",
         )
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
 
     url = reverse(
         "plugins:hubspot:hubspot",

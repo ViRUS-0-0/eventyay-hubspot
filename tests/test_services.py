@@ -25,6 +25,7 @@ from hubspot.services import (
 @pytest.fixture
 def hubspot_token(event):
     with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
         return HubSpotOAuthToken.objects.create(
             event=event,
             access_token="old_access",
@@ -268,7 +269,6 @@ def test_is_sync_enabled_event_level_no_token(event):
 @pytest.mark.django_db
 def test_is_sync_enabled_event_level_with_token(event, hubspot_token):
     with scope(organizer=event.organizer):
-        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
         # Token exists via the hubspot_token fixture
         assert is_sync_enabled(event) is True
 
