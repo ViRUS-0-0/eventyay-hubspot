@@ -612,7 +612,9 @@ def sync_all_mappings_task(self, event_id: int):
 
 
 @shared_task(bind=True, max_retries=3)
-def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
+def refresh_hubspot_properties_task(
+    self, event_id: int | None, object_type: str, organizer_id: int | None = None
+):
     """
     Background task to refresh HubSpot properties.
     Uses exponential backoff on failure.
@@ -620,18 +622,28 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
 
     try:
         with scopes_disabled():
-            event = Event.objects.get(id=event_id)
-    except Event.DoesNotExist:
+            if organizer_id:
+                from eventyay.base.models import Organizer
+
+                organizer = Organizer.objects.get(id=organizer_id)
+                event = None
+            else:
+                event = Event.objects.get(id=event_id)
+                organizer = event.organizer
+    except Exception:
         return
 
-    data_key = f"hubspot_properties_{event.id}_{object_type}"
-    lock_key = f"hubspot_properties_lock_{event.id}_{object_type}"
-    manual_sync_lock_key = f"hubspot_manual_sync_lock_{event.id}_{object_type}"
-    error_key = f"hubspot_properties_error_{event.id}_{object_type}"
+    prefix = f"org_{organizer_id}" if organizer_id else f"evt_{event_id}"
+    data_key = f"hubspot_properties_{prefix}_{object_type}"
+    lock_key = f"hubspot_properties_lock_{prefix}_{object_type}"
+    manual_sync_lock_key = f"hubspot_manual_sync_lock_{prefix}_{object_type}"
+    error_key = f"hubspot_properties_error_{prefix}_{object_type}"
 
     try:
-        with scope(organizer=event.organizer):
-            properties = sync_hubspot_properties(event, object_type)
+        with scope(organizer=organizer):
+            properties = sync_hubspot_properties(
+                event, object_type, organizer=organizer if organizer_id else None
+            )
         cache.set(
             data_key, {"fetched_at": now(), "properties": properties}, timeout=None
         )

@@ -1,0 +1,12 @@
+.sync-mode-locked {
+    pointer-events: none;
+    background-color: #eee;
+}
+
+.highlight-row-temp {
+    background-color: #fcf8e3 !important;
+}
+
+.default-badge {
+    margin-left: 5px;
+}

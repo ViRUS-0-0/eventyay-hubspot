@@ -1,6 +1,6 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
-from eventyay.base.models import Event
+from eventyay.base.models import Event, Organizer
 from eventyay.control.forms.filter import FilterForm
 from eventyay.base.forms.widgets import DatePickerWidget
 
@@ -9,6 +9,8 @@ from .models import (
     ObjectTypeMapping,
     HubSpotFieldMapping,
     SyncMode,
+    OrganizerDefaultObjectTypeMapping,
+    OrganizerDefaultFieldMapping,
 )
 
 
@@ -166,6 +168,8 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         grouped = {}
         for f in fields_list:
             cat = f.get("category", "Other")
+            if getattr(self, "exclude_questions", False) and cat == "Questions":
+                continue
             if cat not in grouped:
                 grouped[cat] = []
 
@@ -321,3 +325,73 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
                 params={"count": identifier_count},
                 code="multiple_identifiers",
             )
+
+
+class OrganizerDefaultObjectTypeMappingForm(forms.ModelForm):
+    class Meta:
+        model = OrganizerDefaultObjectTypeMapping
+        fields = ["eventyay_object_type", "hubspot_object_type", "position"]
+        widgets = {
+            "eventyay_object_type": forms.Select(attrs={"class": "form-control"}),
+            "hubspot_object_type": forms.Select(attrs={"class": "form-control"}),
+            "position": forms.HiddenInput(attrs={"class": "mapping-position"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "position" in self.fields:
+            self.fields["position"].required = False
+
+    def clean_position(self):
+        pos = self.cleaned_data.get("position")
+        return pos if pos is not None else 0
+
+
+class BaseOrganizerDefaultObjectTypeMappingFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        seen = set()
+        for form in self.forms:
+            if self._should_delete_form(form):
+                continue
+            if not form.cleaned_data:
+                continue
+            pair = (
+                form.cleaned_data.get("eventyay_object_type"),
+                form.cleaned_data.get("hubspot_object_type"),
+            )
+            if not all(pair):
+                continue
+            if pair in seen:
+                raise forms.ValidationError(
+                    _(
+                        "Duplicate mapping: each eventyay / HubSpot object-type "
+                        "pair may only appear once per organizer."
+                    )
+                )
+            seen.add(pair)
+        super().clean()
+
+
+OrganizerDefaultObjectTypeMappingFormSet = forms.inlineformset_factory(
+    parent_model=Organizer,
+    model=OrganizerDefaultObjectTypeMapping,
+    form=OrganizerDefaultObjectTypeMappingForm,
+    formset=BaseOrganizerDefaultObjectTypeMappingFormSet,
+    fk_name="organizer",
+    extra=0,
+    can_delete=True,
+)
+
+
+class OrganizerDefaultFieldMappingForm(HubSpotFieldMappingForm):
+    class Meta:
+        model = OrganizerDefaultFieldMapping
+        fields = ["eventyay_field", "hubspot_property", "sync_mode", "is_active"]
+
+    def __init__(self, *args, **kwargs):
+        self.exclude_questions = True
+        super().__init__(*args, **kwargs)
+
+
+class BaseOrganizerDefaultFieldMappingFormSet(BaseHubSpotFieldMappingFormSet):
+    pass

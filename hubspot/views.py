@@ -34,6 +34,9 @@ from .forms import (
     HubSpotEventSettingsForm,
     HubSpotFieldMappingForm,
     ObjectTypeMappingFormSet,
+    OrganizerDefaultObjectTypeMappingFormSet,
+    OrganizerDefaultFieldMappingForm,
+    BaseOrganizerDefaultFieldMappingFormSet,
 )
 from .models import (
     AuditAction,
@@ -44,13 +47,22 @@ from .models import (
     ObjectTypeMapping,
     OrganizerHubSpotSettings,
     OrganizerHubSpotOAuthToken,
+    OrganizerDefaultObjectTypeMapping,
+    OrganizerDefaultFieldMapping,
     SyncAction,
     SyncDirection,
     SyncLog,
     SyncStatus,
+    SyncMode,
 )
 from .field_discovery import get_available_fields
-from .services import get_hubspot_properties, get_valid_hubspot_token, is_sync_enabled
+from .services import (
+    apply_default_mappings_to_all_events,
+    check_and_clear_mapping_conflict,
+    get_hubspot_properties,
+    get_valid_hubspot_token,
+    is_sync_enabled,
+)
 from .utils import get_hubspot_activity_logs
 from .tasks import sync_all_mappings_task, sync_order_to_hubspot
 from .sync_logic import (
@@ -373,6 +385,8 @@ class EventHubSpotCallbackView(View):
                     action=AuditAction.ORG_CONNECT,
                     ip_address=get_client_ip(request),
                 )
+
+                apply_default_mappings_to_all_events(organizer)
         else:
             with scope(organizer=event.organizer):
                 HubSpotOAuthToken.objects.update_or_create(
@@ -475,18 +489,19 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
                 ip_address=get_client_ip(request),
             )
 
-        # Clear synced HubSpot properties
-
-        cache.delete(f"hubspot_properties_{request.event.id}_contacts")
-        cache.delete(f"hubspot_properties_{request.event.id}_deals")
-        cache.delete(f"hubspot_properties_error_{request.event.id}_contacts")
-        cache.delete(f"hubspot_properties_error_{request.event.id}_deals")
-        cache.delete(f"hubspot_properties_lock_{request.event.id}_contacts")
-        cache.delete(f"hubspot_properties_lock_{request.event.id}_deals")
-        cache.delete(f"hubspot_manual_sync_lock_{request.event.id}_contacts")
-        cache.delete(f"hubspot_manual_sync_lock_{request.event.id}_deals")
-        cache.delete(f"hubspot_auto_sync_limit_{request.event.id}_contacts")
-        cache.delete(f"hubspot_auto_sync_limit_{request.event.id}_deals")
+        # Clear synced HubSpot properties and locks
+        cache_keys = []
+        for sync_type in ["contacts", "deals"]:
+            cache_keys.extend(
+                [
+                    f"hubspot_properties_evt_{request.event.id}_{sync_type}",
+                    f"hubspot_properties_error_evt_{request.event.id}_{sync_type}",
+                    f"hubspot_manual_sync_lock_evt_{request.event.id}_{sync_type}",
+                    f"hubspot_properties_lock_evt_{request.event.id}_{sync_type}",
+                    f"hubspot_auto_sync_limit_{request.event.id}_{sync_type}",
+                ]
+            )
+        cache.delete_many(cache_keys)
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)
@@ -607,10 +622,22 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
 
         hubspot_object_type = mapping.hubspot_object_type
 
-        queryset = HubSpotFieldMapping.objects.filter(
-            event=request.event,
-            content_type=content_type,
-            hubspot_object_type=hubspot_object_type,
+        from django.db.models import Case, When, Value, IntegerField
+
+        queryset = (
+            HubSpotFieldMapping.objects.filter(
+                event=request.event,
+                content_type=content_type,
+                hubspot_object_type=hubspot_object_type,
+            )
+            .annotate(
+                is_identifier=Case(
+                    When(sync_mode=SyncMode.IDENTIFIER, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by("is_identifier", "eventyay_field")
         )
 
         FormSet = modelformset_factory(
@@ -642,9 +669,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             )
             hubspot_properties = []
 
-        error_key = (
-            f"hubspot_properties_error_{request.event.id}_{mapping.hubspot_object_type}"
-        )
+        error_key = f"hubspot_properties_error_evt_{request.event.id}_{mapping.hubspot_object_type}"
         if cache.get(error_key):
             sync_error = _(
                 "HubSpot properties sync failed repeatedly. "
@@ -653,7 +678,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
 
         is_fetching_properties = (
             cache.get(
-                f"hubspot_manual_sync_lock_{request.event.id}_{mapping.hubspot_object_type}"
+                f"hubspot_manual_sync_lock_evt_{request.event.id}_{mapping.hubspot_object_type}"
             )
             is not None
         )
@@ -685,12 +710,14 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             except ObjectTypeMapping.DoesNotExist:
                 raise PermissionDenied(_("Invalid object mapping."))
 
-            rate_limit_key = f"hubspot_manual_sync_limit_{request.event.id}_{mapping.hubspot_object_type}"
+            rate_limit_key = f"hubspot_manual_sync_limit_evt_{request.event.id}_{mapping.hubspot_object_type}"
 
             if cache.add(rate_limit_key, "1", timeout=30):
-                error_key = f"hubspot_properties_error_{request.event.id}_{mapping.hubspot_object_type}"
+                error_key = f"hubspot_properties_error_evt_{request.event.id}_{mapping.hubspot_object_type}"
                 cache.delete(error_key)
-                lock_key = f"hubspot_manual_sync_lock_{request.event.id}_{mapping.hubspot_object_type}"
+                general_lock_key = f"hubspot_properties_lock_evt_{request.event.id}_{mapping.hubspot_object_type}"
+                cache.add(general_lock_key, "1", timeout=60)
+                lock_key = f"hubspot_manual_sync_lock_evt_{request.event.id}_{mapping.hubspot_object_type}"
                 cache.add(lock_key, "1", timeout=60)
 
                 from .tasks import refresh_hubspot_properties_task
@@ -734,6 +761,30 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
 
         context["has_rows"] = setup["queryset"].exists()
 
+        eventyay_fields_dict = {
+            f["key"]: f["label"] for f in setup["form_kwargs"]["eventyay_fields"]
+        }
+        identifier_forms = []
+        for idx, form in enumerate(context["formset"]):
+            if (
+                form.instance.sync_mode == SyncMode.IDENTIFIER
+                or form.initial.get("sync_mode") == SyncMode.IDENTIFIER
+            ):
+                identifier_forms.append(
+                    {
+                        "index": idx,
+                        "eventyay_field": eventyay_fields_dict.get(
+                            form.instance.eventyay_field, form.instance.eventyay_field
+                        ),
+                        "hubspot_property": form.instance.hubspot_property,
+                        "is_default": form.instance.source == "organizer_default",
+                    }
+                )
+
+        if len(identifier_forms) > 1:
+            context["identifier_conflict"] = True
+            context["conflicting_identifiers"] = identifier_forms
+
         return context
 
     def post(self, request, *args, **kwargs):
@@ -759,6 +810,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
             if formset.has_changed():
                 setup["mapping"].save()
                 clear_sync_status_cache(request.event)
+                check_and_clear_mapping_conflict(request.event)
 
             AuditLog.objects.create(
                 organizer=request.event.organizer,
@@ -805,6 +857,16 @@ class EventHubSpotSyncMappingView(EventPermissionRequiredMixin, View):
                 "event": request.event.slug,
             },
         )
+
+        settings = HubSpotEventSettings.objects.filter(event=request.event).first()
+        if settings and settings.has_mapping_conflict:
+            messages.error(
+                request,
+                _(
+                    "HubSpot sync is blocked due to mapping conflicts. Please resolve them first."
+                ),
+            )
+            return redirect(settings_url)
 
         token = get_valid_hubspot_token(request.event)
         if not token:
@@ -1118,6 +1180,76 @@ class SyncOrderNowView(EventPermissionRequiredMixin, View):
         )
 
 
+class EventHubSpotMappingResolutionRedirectView(EventPermissionRequiredMixin, View):
+    """
+    Redirects the user to the specific ObjectTypeMapping FieldMappingView
+    that has an identifier conflict or duplicate mappings.
+    """
+
+    permission = "can_change_event_settings"
+
+    def get(self, request, *args, **kwargs):
+        mappings = ObjectTypeMapping.objects.filter(event=request.event)
+
+        target_mapping = None
+        for mapping in mappings:
+            if mapping.eventyay_object_type == "order":
+                content_type = ContentType.objects.get_for_model(Order)
+            elif mapping.eventyay_object_type == "order_position":
+                content_type = ContentType.objects.get_for_model(OrderPosition)
+            else:
+                continue
+
+            field_mappings = HubSpotFieldMapping.objects.filter(
+                event=request.event,
+                content_type=content_type,
+                hubspot_object_type=mapping.hubspot_object_type,
+            )
+
+            # Check for multiple identifiers
+            identifier_count = field_mappings.filter(
+                sync_mode=SyncMode.IDENTIFIER
+            ).count()
+            if identifier_count > 1:
+                target_mapping = mapping
+                break
+
+            # Check for duplicates (same eventyay_field mapped multiple times)
+            from django.db.models import Count
+
+            duplicates = (
+                field_mappings.values("eventyay_field")
+                .annotate(c=Count("id"))
+                .filter(c__gt=1)
+            )
+            if duplicates.exists():
+                target_mapping = mapping
+                break
+
+        if target_mapping:
+            return redirect(
+                reverse(
+                    "plugins:hubspot:mapping_fields",
+                    kwargs={
+                        "organizer": request.event.organizer.slug,
+                        "event": request.event.slug,
+                        "mapping_id": target_mapping.pk,
+                    },
+                )
+            )
+
+        # Fallback to the settings landing page
+        return redirect(
+            reverse(
+                "plugins:hubspot:hubspot",
+                kwargs={
+                    "organizer": request.event.organizer.slug,
+                    "event": request.event.slug,
+                },
+            )
+        )
+
+
 class OrganizerHubSpotSettingsView(
     OrganizerPermissionRequiredMixin, OrganizerDetailViewMixin, TemplateView
 ):
@@ -1125,6 +1257,15 @@ class OrganizerHubSpotSettingsView(
 
     template_name = "hubspot/organizer_settings.html"
     permission = "can_change_organizer_settings"
+
+    def _get_default_mappings_formset(self, data=None):
+        return OrganizerDefaultObjectTypeMappingFormSet(
+            data,
+            instance=self.request.organizer,
+            queryset=OrganizerDefaultObjectTypeMapping.objects.filter(
+                organizer=self.request.organizer
+            ),
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -1136,6 +1277,9 @@ class OrganizerHubSpotSettingsView(
             context["connected_since"] = token.created_at
         except OrganizerHubSpotOAuthToken.DoesNotExist:
             context["is_connected"] = False
+
+        if "default_mappings_formset" not in context:
+            context["default_mappings_formset"] = self._get_default_mappings_formset()
 
         settings, _created = OrganizerHubSpotSettings.objects.get_or_create(
             organizer=self.request.organizer
@@ -1149,11 +1293,9 @@ class OrganizerHubSpotSettingsView(
             context["events"] = []
             return context
 
-        settings_map = dict(
-            HubSpotEventSettings.objects.filter(event__in=events).values_list(
-                "event", "sync_enabled"
-            )
-        )
+        settings_map = {
+            s.event_id: s for s in HubSpotEventSettings.objects.filter(event__in=events)
+        }
         tokens_set = set(
             HubSpotOAuthToken.objects.filter(event__in=events).values_list(
                 "event", flat=True
@@ -1171,8 +1313,13 @@ class OrganizerHubSpotSettingsView(
         )
 
         for event in events:
-            # Toggle state
-            event.event_sync_enabled = settings_map.get(event.id, settings.sync_enabled)
+            ev_settings = settings_map.get(event.id)
+            event.event_sync_enabled = (
+                ev_settings.sync_enabled if ev_settings else settings.sync_enabled
+            )
+            event.has_mapping_conflict = (
+                ev_settings.has_mapping_conflict if ev_settings else False
+            )
 
             # Connection status
             has_event_token = event.id in tokens_set
@@ -1252,6 +1399,27 @@ class OrganizerHubSpotSettingsView(
                 )
 
             messages.success(request, _("Event sync settings saved."))
+
+        elif form_type == "default_mappings":
+            formset = self._get_default_mappings_formset(request.POST)
+            if formset.is_valid():
+                formset.save()
+                AuditLog.objects.create(
+                    organizer=request.organizer,
+                    event=None,
+                    action=AuditAction.MAPPING_UPDATED,
+                    ip_address=get_client_ip(request),
+                )
+                apply_default_mappings_to_all_events(request.organizer)
+                messages.success(request, _("Default object mappings saved."))
+                return redirect(request.path)
+            else:
+                messages.error(
+                    request, _("We could not save your changes. See below for details.")
+                )
+                return self.render_to_response(
+                    self.get_context_data(default_mappings_formset=formset)
+                )
 
         return redirect(
             reverse(
@@ -1347,3 +1515,225 @@ class OrganizerHubSpotDisconnectView(OrganizerPermissionRequiredMixin, View):
 
         messages.success(request, _("Successfully disconnected from HubSpot."))
         return redirect(settings_url)
+
+
+class OrganizerHubSpotDefaultMappingView(
+    OrganizerPermissionRequiredMixin, TemplateView
+):
+    """View to manage default field mapping rows for a specific organizer mapping type."""
+
+    template_name = "hubspot/organizer_default_field_mapping.html"
+    permission = "can_change_organizer_settings"
+
+    def _get_formset_kwargs(self, mapping_id, request):
+        try:
+            mapping = OrganizerDefaultObjectTypeMapping.objects.get(
+                pk=mapping_id, organizer=request.organizer
+            )
+        except OrganizerDefaultObjectTypeMapping.DoesNotExist:
+            raise PermissionDenied(_("Invalid default object mapping."))
+
+        if mapping.eventyay_object_type == "order":
+            content_type = ContentType.objects.get_for_model(Order)
+        elif mapping.eventyay_object_type == "order_position":
+            content_type = ContentType.objects.get_for_model(OrderPosition)
+        else:
+            raise PermissionDenied(_("Unsupported eventyay object type."))
+
+        hubspot_object_type = mapping.hubspot_object_type
+
+        from django.db.models import Case, When, Value, IntegerField
+
+        queryset = (
+            OrganizerDefaultFieldMapping.objects.filter(
+                object_type_mapping=mapping,
+            )
+            .annotate(
+                is_identifier=Case(
+                    When(sync_mode=SyncMode.IDENTIFIER, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by("is_identifier", "eventyay_field")
+        )
+
+        FormSet = modelformset_factory(
+            OrganizerDefaultFieldMapping,
+            form=OrganizerDefaultFieldMappingForm,
+            formset=BaseOrganizerDefaultFieldMappingFormSet,
+            extra=1 if not queryset.exists() else 0,
+            can_delete=True,
+        )
+
+        eventyay_fields = get_available_fields(mapping.eventyay_object_type)
+
+        sync_error = None
+        hubspot_properties = []
+        is_fetching_properties = False
+
+        try:
+            hubspot_properties = get_hubspot_properties(
+                event=None,
+                object_type=mapping.hubspot_object_type,
+                organizer=request.organizer,
+            )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "Failed to load HubSpot properties for organizer %s: %s",
+                request.organizer.slug,
+                e,
+            )
+            sync_error = _(
+                "Could not retrieve HubSpot properties. "
+                "Please check your connection and try again."
+            )
+            hubspot_properties = []
+
+        error_key = f"hubspot_properties_error_org_{request.organizer.id}_{mapping.hubspot_object_type}"
+        if cache.get(error_key):
+            sync_error = _(
+                "HubSpot properties sync failed repeatedly. "
+                "HubSpot may be unreachable or you might need to reconnect."
+            )
+
+        is_fetching_properties = (
+            cache.get(
+                f"hubspot_manual_sync_lock_org_{request.organizer.id}_{mapping.hubspot_object_type}"
+            )
+            is not None
+        )
+
+        form_kwargs = {
+            "eventyay_fields": eventyay_fields,
+            "hubspot_properties": hubspot_properties,
+            "is_fetching_properties": is_fetching_properties,
+        }
+
+        return {
+            "FormSet": FormSet,
+            "queryset": queryset,
+            "form_kwargs": form_kwargs,
+            "content_type": content_type,
+            "hubspot_object_type": hubspot_object_type,
+            "mapping": mapping,
+            "sync_error": sync_error,
+            "is_fetching_properties": is_fetching_properties,
+        }
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("force_sync") == "1":
+            mapping_id = self.kwargs.get("mapping_id")
+            try:
+                mapping = OrganizerDefaultObjectTypeMapping.objects.get(
+                    pk=mapping_id, organizer=request.organizer
+                )
+            except OrganizerDefaultObjectTypeMapping.DoesNotExist:
+                raise PermissionDenied(_("Invalid object mapping."))
+
+            rate_limit_key = f"hubspot_manual_sync_limit_org_{request.organizer.id}_{mapping.hubspot_object_type}"
+
+            if cache.add(rate_limit_key, "1", timeout=30):
+                error_key = f"hubspot_properties_error_org_{request.organizer.id}_{mapping.hubspot_object_type}"
+                cache.delete(error_key)
+
+                general_lock_key = f"hubspot_properties_lock_org_{request.organizer.id}_{mapping.hubspot_object_type}"
+                cache.add(general_lock_key, "1", timeout=60)
+
+                lock_key = f"hubspot_manual_sync_lock_org_{request.organizer.id}_{mapping.hubspot_object_type}"
+                cache.add(lock_key, "1", timeout=60)
+
+                from .tasks import refresh_hubspot_properties_task
+
+                refresh_hubspot_properties_task.apply_async(
+                    args=[None, mapping.hubspot_object_type, request.organizer.id]
+                )
+                messages.success(request, _("Sync task started in the background."))
+            else:
+                messages.error(request, _("Please wait a moment before trying again."))
+
+            clean_url = reverse(
+                "plugins:hubspot:org_default_mapping_fields",
+                kwargs={
+                    "organizer": request.organizer.slug,
+                    "mapping_id": mapping_id,
+                },
+            )
+            return redirect(clean_url)
+
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, setup=None, **kwargs):
+        context = super().get_context_data(**kwargs)
+        mapping_id = self.kwargs.get("mapping_id")
+
+        if setup is None:
+            setup = self._get_formset_kwargs(mapping_id, self.request)
+
+        context["content_type"] = setup["content_type"]
+        context["hubspot_object_type"] = setup["hubspot_object_type"]
+        context["mapping"] = setup["mapping"]
+        context["sync_error"] = setup.get("sync_error")
+        context["is_fetching_properties"] = setup.get("is_fetching_properties", False)
+
+        if "formset" not in context:
+            context["formset"] = setup["FormSet"](
+                queryset=setup["queryset"], form_kwargs=setup["form_kwargs"]
+            )
+
+        context["has_rows"] = setup["queryset"].exists()
+
+        return context
+
+    def post(self, request, *args, **kwargs):
+        mapping_id = self.kwargs.get("mapping_id")
+        setup = self._get_formset_kwargs(mapping_id, request)
+
+        formset = setup["FormSet"](
+            request.POST, queryset=setup["queryset"], form_kwargs=setup["form_kwargs"]
+        )
+
+        if formset.is_valid():
+            instances = formset.save(commit=False)
+
+            for instance in instances:
+                instance.object_type_mapping = setup["mapping"]
+                instance.save()
+
+            for obj in formset.deleted_objects:
+                obj.delete()
+
+            if formset.has_changed():
+                setup["mapping"].save()
+                apply_default_mappings_to_all_events(request.organizer)
+
+            AuditLog.objects.create(
+                organizer=request.organizer,
+                event=None,
+                action=AuditAction.FIELD_MAPPING_UPDATED,
+                ip_address=get_client_ip(request),
+            )
+
+            messages.success(
+                request, _("Default field mapping configuration saved successfully.")
+            )
+            return redirect(
+                reverse(
+                    "plugins:hubspot:org_default_mapping_fields",
+                    kwargs={
+                        "organizer": request.organizer.slug,
+                        "mapping_id": mapping_id,
+                    },
+                )
+            )
+        else:
+            messages.error(
+                request,
+                _(
+                    "There were errors saving your configuration. Please check the form."
+                ),
+            )
+            return self.render_to_response(
+                self.get_context_data(setup=setup, formset=formset)
+            )

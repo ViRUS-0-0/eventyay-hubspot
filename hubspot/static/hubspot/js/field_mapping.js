@@ -95,4 +95,95 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.reload();
         }, 5000);
     }
+
+    const conflictBox = document.getElementById('identifier-conflict-box');
+    if (conflictBox) {
+        const radios = document.querySelectorAll('.resolve-identifier-radio');
+        const indicesStr = conflictBox.getAttribute('data-conflicting-indices');
+        const conflictingIndices = indicesStr ? indicesStr.split(',').filter(s => s.trim().length > 0).map(s => parseInt(s, 10)) : [];
+        let newIdentifierRowAdded = false;
+
+        radios.forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                const val = this.value;
+                if (val === 'new') {
+                    conflictingIndices.forEach(function(idx) {
+                        const delCheckbox = document.getElementById('id_form-' + idx + '-DELETE');
+                        if (delCheckbox) {
+                            delCheckbox.checked = true;
+                            delCheckbox.closest('tr').style.display = 'none';
+                        }
+                    });
+
+                    if (!newIdentifierRowAdded) {
+                        const addRowBtn = document.getElementById('add-form-row');
+                        if (addRowBtn) {
+                            addRowBtn.click();
+                            const rows = document.querySelectorAll('#field-mapping-formset .formset-row');
+                            if (rows.length > 0) {
+                                const lastRow = rows[rows.length - 1];
+                                lastRow.classList.add('dynamic-identifier-row');
+                                const syncModeSelect = lastRow.querySelector('select[name$="-sync_mode"]');
+                                if (syncModeSelect) {
+                                    let hasIdentifier = false;
+                                    for (let i = 0; i < syncModeSelect.options.length; i++) {
+                                        if (syncModeSelect.options[i].value === 'identifier') {
+                                            hasIdentifier = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!hasIdentifier) {
+                                        syncModeSelect.add(new Option('Identifier', 'identifier'));
+                                    }
+                                    syncModeSelect.value = 'identifier';
+                                    syncModeSelect.classList.add('sync-mode-locked');
+                                }
+                                lastRow.classList.add('highlight-row-temp');
+                                setTimeout(function() {
+                                    lastRow.classList.remove('highlight-row-temp');
+                                }, 1000);
+                                
+                                // Move to the top of the table
+                                lastRow.parentNode.insertBefore(lastRow, lastRow.parentNode.firstChild);
+
+                                // Scroll to the new row
+                                lastRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                        }
+                        newIdentifierRowAdded = true;
+                    } else {
+                        const dynRow = document.querySelector('.dynamic-identifier-row');
+                        if (dynRow) {
+                            dynRow.style.display = '';
+                            const delCheckbox = dynRow.querySelector('input[id$="-DELETE"]');
+                            if (delCheckbox) delCheckbox.checked = false;
+                        }
+                    }
+                } else {
+                    const dynRow = document.querySelector('.dynamic-identifier-row');
+                    if (dynRow) {
+                        dynRow.style.display = 'none';
+                        const delCheckbox = dynRow.querySelector('input[id$="-DELETE"]');
+                        if (delCheckbox) delCheckbox.checked = true;
+                    }
+                    
+                    const keepIdx = parseInt(val, 10);
+                    conflictingIndices.forEach(function(idx) {
+                        const delCheckbox = document.getElementById('id_form-' + idx + '-DELETE');
+                        if (delCheckbox) {
+                            if (idx === keepIdx) {
+                                delCheckbox.checked = false;
+                                delCheckbox.closest('tr').style.display = '';
+                                const syncModeSelect = document.getElementById('id_form-' + idx + '-sync_mode');
+                                if (syncModeSelect) syncModeSelect.value = 'identifier';
+                            } else {
+                                delCheckbox.checked = true;
+                                delCheckbox.closest('tr').style.display = 'none';
+                            }
+                        }
+                    });
+                }
+            });
+        });
+    }
 });

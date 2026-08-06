@@ -144,6 +144,7 @@ class HubSpotEventSettings(models.Model):
     sync_deals = models.BooleanField(default=True)
     deal_pipeline = models.CharField(max_length=200, blank=True)
     deal_stage = models.CharField(max_length=200, blank=True)
+    has_mapping_conflict = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -191,6 +192,11 @@ class HubSpotFieldMapping(models.Model):
         max_length=20, choices=SyncMode.choices, default=SyncMode.OVERWRITE
     )
     is_active = models.BooleanField(default=True)
+    source = models.CharField(
+        max_length=20,
+        choices=[("custom", "Custom"), ("organizer_default", "Organizer default")],
+        default="custom",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -200,6 +206,7 @@ class HubSpotFieldMapping(models.Model):
             "content_type",
             "eventyay_field",
             "hubspot_object_type",
+            "source",
         )
         verbose_name = "HubSpot Field Mapping"
         verbose_name_plural = "HubSpot Field Mappings"
@@ -296,4 +303,45 @@ class ObjectTypeMapping(models.Model):
         return (
             f"{self.get_eventyay_object_type_display()}"
             f" \u2192 {self.get_hubspot_object_type_display()}"
+        )
+
+
+class OrganizerDefaultObjectTypeMapping(models.Model):
+    organizer = models.ForeignKey("base.Organizer", on_delete=models.CASCADE)
+    objects = ScopedManager(organizer="organizer")
+    eventyay_object_type = models.CharField(
+        max_length=50, choices=EventyayObjectType.choices
+    )
+    hubspot_object_type = models.CharField(
+        max_length=50, choices=HubSpotObjectType.choices
+    )
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("organizer", "eventyay_object_type", "hubspot_object_type")
+        ordering = ["position", "pk"]
+
+
+class OrganizerDefaultFieldMapping(models.Model):
+    object_type_mapping = models.ForeignKey(
+        OrganizerDefaultObjectTypeMapping,
+        on_delete=models.CASCADE,
+        related_name="field_mappings",
+    )
+    objects = ScopedManager(organizer="object_type_mapping__organizer")
+    eventyay_field = models.CharField(max_length=190)
+    hubspot_property = models.CharField(max_length=190)
+    sync_mode = models.CharField(
+        max_length=20, choices=SyncMode.choices, default=SyncMode.OVERWRITE
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = (
+            "object_type_mapping",
+            "eventyay_field",
         )

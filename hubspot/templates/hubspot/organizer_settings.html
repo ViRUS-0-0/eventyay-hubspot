@@ -3,7 +3,8 @@
 
 {% block custom_header %}
     <link rel="stylesheet" type="text/css" href="{% static "hubspot/css/settings_landing.css" %}">
-    <script type="text/javascript" src="{% static "hubspot/js/settings_landing.js" %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static "hubspot/css/organizer_settings.css" %}">
+    <script type="text/javascript" src="{% static "hubspot/js/organizer_settings.js" %}"></script>
 {% endblock %}
 
 {% block title %}{% translate "HubSpot Integration" %} :: {% endblock %}
@@ -57,6 +58,7 @@
         </div>
     </div>
 
+
     <div class="panel panel-default">
         <div class="panel-heading">
             <h3 class="panel-title">{% translate "Your Events" %}</h3>
@@ -92,6 +94,16 @@
                                     <span class="badge badge-{{ event.mapping_badge_class }}">
                                         {{ event.mapping_status_text }}
                                     </span>
+                                    {% if event.has_mapping_conflict %}
+                                        <br>
+                                        <span class="text-warning small conflict-warning">
+                                            <i class="fa fa-exclamation-triangle"></i> {% translate "Conflict with defaults" %}
+                                        </span>
+                                        <br>
+                                        <a href="{% url 'plugins:hubspot:resolve_conflict' organizer=request.organizer.slug event=event.slug %}" class="btn btn-warning btn-xs" style="margin-top: 5px;">
+                                            {% translate "Resolve" %}
+                                        </a>
+                                    {% endif %}
                                 </td>
                                 <td class="text-center">
                                     <label class="hubspot-toggle">
@@ -118,6 +130,97 @@
                 </div>
             {% endif %}
         </form>
+    </div>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% translate "Default Object Mappings" %}</h3>
+        </div>
+        <div class="panel-body">
+            <p>{% translate "Set up default object mappings for all events under this organizer." %}</p>
+            <p class="text-muted">
+                {% translate 'Depending on whether you select "orders" or "order positions" as the "eventyay object type", one HubSpot object is created for each order or one for each order item. The selection under "HubSpot object type" determines into which type of HubSpot object the data is stored.' %}
+            </p>
+            <form method="post" id="mapping-form" action="{% url 'plugins:hubspot:org_hubspot' organizer=request.organizer.slug %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="default_mappings">
+                {{ default_mappings_formset.management_form }}
+
+                {% if default_mappings_formset.non_form_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in default_mappings_formset.non_form_errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div id="mapping-rows">
+                    <div class="row mapping-row-header">
+                        <div class="col-md-4"><strong>{% translate "eventyay object type" %}</strong></div>
+                        <div class="col-md-4"><strong>{% translate "HubSpot object type" %}</strong></div>
+                        <div class="col-md-4"></div>
+                    </div>
+                    {% for form in default_mappings_formset %}
+                    <div class="mapping-row"{% if form.instance.pk %} data-id="{{ form.instance.pk }}"{% endif %}>
+                        {{ form.id }}
+                        {{ form.position }}
+                        <div class="row">
+                            <div class="col-md-4">
+                                {{ form.eventyay_object_type }}
+                                {% if form.eventyay_object_type.errors %}
+                                    <span class="text-danger">{{ form.eventyay_object_type.errors.0 }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.hubspot_object_type }}
+                                {% if form.hubspot_object_type.errors %}
+                                    <span class="text-danger">{{ form.hubspot_object_type.errors.0 }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="btn-group" role="group">
+                                    {% if form.instance.pk %}
+                                        <a href="{% url 'plugins:hubspot:org_default_mapping_fields' organizer=request.organizer.slug mapping_id=form.instance.pk %}" class="btn btn-default btn-edit-mapping" title="{% translate 'Edit mapping' %}">
+                                            <i class="fa fa-pencil"></i> {% translate "Edit mapping" %}
+                                        </a>
+                                    {% else %}
+                                        <button type="button" class="btn btn-default btn-edit-mapping" title="{% translate 'Save mapping first to edit fields' %}" disabled>
+                                            <i class="fa fa-pencil"></i> {% translate "Edit mapping" %}
+                                        </button>
+                                    {% endif %}
+                                    <button type="button" class="btn btn-default btn-move-up" title="{% translate 'Move up' %}">
+                                        <i class="fa fa-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-default btn-move-down" title="{% translate 'Move down' %}">
+                                        <i class="fa fa-arrow-down"></i>
+                                    </button>
+                                    <span class="hidden-element">{{ form.DELETE }}</span>
+                                    <button type="button" class="btn btn-danger btn-delete-mapping" title="{% translate 'Delete' %}">
+                                        <i class="fa fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" class="btn btn-default btn-sm add-mapping-btn" id="add-mapping">
+                    <i class="fa fa-plus"></i> {% translate "Add mapping" %}
+                </button>
+
+                <p class="text-muted mapping-info-text">
+                    <i class="fa fa-info-circle"></i>
+                    {% translate "Multiple object mappings will be evaluated in order. Associations can reference all objects created earlier on." %}
+                </p>
+
+                <div class="text-right mapping-submit-group">
+                    <button type="submit" class="btn btn-primary">
+                        {% translate "Save" %}
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
     {% endif %}
 {% endblock %}

@@ -131,14 +131,14 @@ def test_sync_hubspot_properties_success_and_cache(
     assert properties[1] == {"key": "age", "label": "Age", "data_type": "number"}
     assert mock_get.call_count == 2
 
-    # Test get_hubspot_properties first-fetch behavior (should fetch synchronously when cold)
+    # Test get_hubspot_properties first-fetch behavior (should now fetch asynchronously when cold)
     cache.clear()
     with scope(organizer=event.organizer):
         properties2 = get_hubspot_properties(event, "contact")
 
-    assert len(properties2) == 4
-    assert mock_get.call_count == 4
-    mock_task.assert_not_called()
+    assert len(properties2) == 0
+    assert mock_get.call_count == 2
+    mock_task.assert_called_once_with(args=[event.id, "contact", None])
 
 
 @pytest.mark.django_db
@@ -147,7 +147,7 @@ def test_get_hubspot_properties_ttl_expiry(mock_task, event, hubspot_token):
     cache.clear()
 
     # Simulate TTL expiry in cache
-    data_key = f"hubspot_properties_{event.id}_contact"
+    data_key = f"hubspot_properties_evt_{event.id}_contact"
     cached_data = {
         "fetched_at": now() - datetime.timedelta(minutes=15),
         "properties": [
@@ -161,7 +161,7 @@ def test_get_hubspot_properties_ttl_expiry(mock_task, event, hubspot_token):
         properties2 = get_hubspot_properties(event, "contact")
 
     assert len(properties2) == 1
-    mock_task.assert_called_once_with(args=[event.id, "contact"])
+    mock_task.assert_called_once_with(args=[event.id, "contact", None])
 
 
 @pytest.mark.django_db
@@ -192,7 +192,7 @@ def test_get_hubspot_properties_error_suppression(
     mock_get, mock_task, event, hubspot_token
 ):
     cache.clear()
-    error_key = f"hubspot_properties_error_{event.id}_contact"
+    error_key = f"hubspot_properties_error_evt_{event.id}_contact"
     cache.set(error_key, "Max retries exceeded")
 
     # When error_key is set and force_sync is False, get_hubspot_properties should not fetch synchronously or trigger task
@@ -204,7 +204,7 @@ def test_get_hubspot_properties_error_suppression(
     mock_get.assert_not_called()
 
     # When force_sync is True on stale cache, error_key is cleared and task is triggered
-    data_key = f"hubspot_properties_{event.id}_contact"
+    data_key = f"hubspot_properties_evt_{event.id}_contact"
     cache.set(
         data_key,
         {
@@ -218,7 +218,7 @@ def test_get_hubspot_properties_error_suppression(
         get_hubspot_properties(event, "contact", force_sync=True)
 
     assert cache.get(error_key) is None
-    mock_task.assert_called_once_with(args=[event.id, "contact"])
+    mock_task.assert_called_once_with(args=[event.id, "contact", None])
 
 
 @pytest.mark.django_db
@@ -226,7 +226,7 @@ def test_get_hubspot_properties_error_suppression(
 def test_get_hubspot_properties_auto_sync_rate_limit(mock_task, event, hubspot_token):
     cache.clear()
     # Populate stale cache so background refresh is tested
-    data_key = f"hubspot_properties_{event.id}_contact"
+    data_key = f"hubspot_properties_evt_{event.id}_contact"
     cache.set(
         data_key,
         {
@@ -242,7 +242,7 @@ def test_get_hubspot_properties_auto_sync_rate_limit(mock_task, event, hubspot_t
     assert mock_task.call_count == 1
 
     # Simulate lock expiring or being deleted after task failure/completion while within 30s auto-sync limit
-    lock_key = f"hubspot_properties_lock_{event.id}_contact"
+    lock_key = f"hubspot_properties_lock_evt_{event.id}_contact"
     cache.delete(lock_key)
 
     with scope(organizer=event.organizer):

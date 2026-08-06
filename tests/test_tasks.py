@@ -314,8 +314,8 @@ def test_refresh_hubspot_properties_task_retries_and_error(mock_sync, mock_event
 
     # Test retry mechanism and lock preservation on failure before max retries
     mock_sync.side_effect = HubSpotFetchError("Rate limited")
-    lock_key = f"hubspot_properties_lock_{mock_event.id}_contact"
-    error_key = f"hubspot_properties_error_{mock_event.id}_contact"
+    lock_key = f"hubspot_properties_lock_evt_{mock_event.id}_contact"
+    error_key = f"hubspot_properties_error_evt_{mock_event.id}_contact"
 
     cache.set(lock_key, "1")
 

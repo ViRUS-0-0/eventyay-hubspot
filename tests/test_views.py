@@ -88,8 +88,8 @@ def test_hubspot_disconnect_view_connected(
     with scope(organizer=event.organizer):
         from django.core.cache import cache
 
-        cache.set(f"hubspot_properties_{event.id}_contacts", [{"key": "test"}])
-        cache.set(f"hubspot_properties_error_{event.id}_contacts", "Error")
+        cache.set(f"hubspot_properties_evt_{event.id}_contacts", [{"key": "test"}])
+        cache.set(f"hubspot_properties_error_evt_{event.id}_contacts", "Error")
 
     url = reverse(
         "plugins:hubspot:disconnect",
@@ -107,8 +107,8 @@ def test_hubspot_disconnect_view_connected(
         assert not HubSpotOAuthToken.objects.filter(event=event).exists()
         from django.core.cache import cache
 
-        assert not cache.get(f"hubspot_properties_{event.id}_contacts")
-        assert not cache.get(f"hubspot_properties_error_{event.id}_contacts")
+        assert not cache.get(f"hubspot_properties_evt_{event.id}_contacts")
+        assert not cache.get(f"hubspot_properties_error_evt_{event.id}_contacts")
 
 
 @pytest.mark.django_db
