@@ -1301,15 +1301,24 @@ class OrganizerHubSpotSettingsView(
                 "event", flat=True
             )
         )
-        obj_mappings_set = set(
-            ObjectTypeMapping.objects.filter(event__in=events).values_list(
-                "event", flat=True
-            )
+        default_obj_mappings = set(
+            OrganizerDefaultObjectTypeMapping.objects.filter(
+                organizer=self.request.organizer
+            ).values_list("eventyay_object_type", "hubspot_object_type")
         )
-        field_mappings_set = set(
-            HubSpotFieldMapping.objects.filter(event__in=events).values_list(
-                "event", flat=True
+
+        event_obj_mappings = {}
+        for obj_mapping in ObjectTypeMapping.objects.filter(event__in=events):
+            if obj_mapping.event_id not in event_obj_mappings:
+                event_obj_mappings[obj_mapping.event_id] = set()
+            event_obj_mappings[obj_mapping.event_id].add(
+                (obj_mapping.eventyay_object_type, obj_mapping.hubspot_object_type)
             )
+
+        custom_field_mappings_set = set(
+            HubSpotFieldMapping.objects.filter(
+                event__in=events, source="custom"
+            ).values_list("event", flat=True)
         )
 
         for event in events:
@@ -1334,14 +1343,20 @@ class OrganizerHubSpotSettingsView(
                 event.connection_badge_class = "muted"
 
             # Mapping status
-            has_mappings = (
-                event.id in obj_mappings_set or event.id in field_mappings_set
-            )
-            if has_mappings:
+            has_custom_fields = event.id in custom_field_mappings_set
+            event_objs = event_obj_mappings.get(event.id, set())
+
+            is_custom = False
+            if has_custom_fields:
+                is_custom = True
+            elif event_objs and event_objs != default_obj_mappings:
+                is_custom = True
+
+            if is_custom:
                 event.mapping_status_text = _("Custom")
                 event.mapping_badge_class = "primary"
             else:
-                event.mapping_status_text = _("Organizer default")
+                event.mapping_status_text = _("Default")
                 event.mapping_badge_class = "default"
 
         context["events"] = events

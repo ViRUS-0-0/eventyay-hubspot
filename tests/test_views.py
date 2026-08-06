@@ -284,7 +284,7 @@ def test_organizer_settings_view_connection_and_mapping_status(
     assert e2.connection_badge_class == "info"
     assert "Organizer fallback" in str(e2.connection_status_text)
     assert e2.mapping_badge_class == "default"
-    assert "Organizer default" in str(e2.mapping_status_text)
+    assert "Default" in str(e2.mapping_status_text)
 
     # Now disable sync for event2 specifically
     with scope(organizer=organizer):
