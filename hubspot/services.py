@@ -265,9 +265,13 @@ def _refresh_token_record(token_obj, event_or_organizer, is_organizer=False):
 def get_valid_hubspot_token(event) -> str | None:
     """
     Returns a valid HubSpot access token for the given event.
+    If sync is disabled for the event, returns None.
     If the event has a token, uses it.
     Otherwise, checks the organizer's token if organizer sync is enabled.
     """
+    if not is_sync_enabled(event):
+        return None
+
     with transaction.atomic(), scope(organizer=event.organizer):
         # 1. Try event token
         try:
@@ -310,24 +314,28 @@ def is_sync_enabled(event) -> bool:
     """
     Returns True if HubSpot sync is enabled and a valid token exists
     for the event or its organizer.
+    If HubSpotEventSettings exists for the event, its sync_enabled overrides organizer fallback.
     """
-    try:
-        if HubSpotEventSettings.objects.get(event=event).sync_enabled:
-            if HubSpotOAuthToken.objects.filter(event=event).exists():
-                return True
-    except HubSpotEventSettings.DoesNotExist:
-        pass
+    with scope(organizer=event.organizer):
+        ev_settings = HubSpotEventSettings.objects.filter(event=event).first()
+        if ev_settings is not None:
+            if not ev_settings.sync_enabled:
+                return False
 
-    try:
-        if OrganizerHubSpotSettings.objects.get(organizer=event.organizer).sync_enabled:
+        # Event sync is enabled (or settings don't exist yet), check if event has a token
+        if HubSpotOAuthToken.objects.filter(event=event).exists():
+            return True
+
+        org_settings = OrganizerHubSpotSettings.objects.filter(
+            organizer=event.organizer
+        ).first()
+        if org_settings is not None and org_settings.sync_enabled:
             if OrganizerHubSpotOAuthToken.objects.filter(
                 organizer=event.organizer
             ).exists():
                 return True
-    except OrganizerHubSpotSettings.DoesNotExist:
-        pass
 
-    return False
+        return False
 
 
 def is_auto_sync_enabled(event) -> bool:

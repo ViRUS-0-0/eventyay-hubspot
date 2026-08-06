@@ -13,12 +13,13 @@ from hubspot.client import (
     update_record,
     get_record,
 )
-from hubspot.models import HubSpotOAuthToken
+from hubspot.models import HubSpotOAuthToken, HubSpotEventSettings
 
 
 @pytest.fixture
 def hubspot_token(event):
     with scope(organizer=event.organizer):
+        HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
         return HubSpotOAuthToken.objects.create(
             event=event,
             access_token="old_access",

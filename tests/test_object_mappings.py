@@ -2,7 +2,7 @@ import pytest
 from django.urls import reverse
 from django_scopes import scope
 
-from hubspot.models import ObjectTypeMapping, HubSpotOAuthToken
+from hubspot.models import ObjectTypeMapping, HubSpotOAuthToken, HubSpotEventSettings
 
 
 def _settings_url(organizer, event):
@@ -18,6 +18,7 @@ def _connect_event(event):
     token.access_token = "acc"
     token.refresh_token = "ref"
     token.save()
+    HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
 
 
 @pytest.mark.django_db
