@@ -1226,7 +1226,6 @@ class OrganizerHubSpotSettingsView(
             }
             to_create = []
             to_update = []
-            events_to_clear_token = []
             for event in events:
                 is_checked = f"event_sync_enabled_{event.id}" in request.POST
                 ev_settings = existing_settings.get(event.id)
@@ -1234,11 +1233,7 @@ class OrganizerHubSpotSettingsView(
                     if ev_settings.sync_enabled != is_checked:
                         ev_settings.sync_enabled = is_checked
                         to_update.append(ev_settings)
-                        if not is_checked:
-                            events_to_clear_token.append(event)
                 else:
-                    if not is_checked:
-                        events_to_clear_token.append(event)
                     to_create.append(
                         HubSpotEventSettings(event=event, sync_enabled=is_checked)
                     )
@@ -1255,18 +1250,6 @@ class OrganizerHubSpotSettingsView(
                     action=AuditAction.ORG_TOGGLE,
                     ip_address=get_client_ip(request),
                 )
-
-            if events_to_clear_token:
-                tokens_to_delete = HubSpotOAuthToken.objects.filter(
-                    event__in=events_to_clear_token
-                )
-                for token in tokens_to_delete:
-                    try:
-                        revoke_url = f"https://api.hubapi.com/oauth/v1/refresh-tokens/{token.refresh_token}"
-                        requests.delete(revoke_url, timeout=10)
-                    except Exception:
-                        pass
-                tokens_to_delete.delete()
 
             messages.success(request, _("Event sync settings saved."))
 

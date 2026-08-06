@@ -321,9 +321,10 @@ def is_sync_enabled(event) -> bool:
         if ev_settings is not None:
             if not ev_settings.sync_enabled:
                 return False
-            # Event sync is enabled, check if event has a token
-            if HubSpotOAuthToken.objects.filter(event=event).exists():
-                return True
+
+        # Event sync is enabled (or settings don't exist yet), check if event has a token
+        if HubSpotOAuthToken.objects.filter(event=event).exists():
+            return True
 
         org_settings = OrganizerHubSpotSettings.objects.filter(
             organizer=event.organizer
