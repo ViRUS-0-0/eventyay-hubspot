@@ -1304,6 +1304,8 @@ class OrganizerHubSpotSettingsView(
         )
         context["sync_enabled"] = settings.sync_enabled
 
+        from django.db.models import Count
+
         events = list(
             self.request.organizer.events.all().order_by("-date_from", "name")
         )
@@ -1319,25 +1321,26 @@ class OrganizerHubSpotSettingsView(
                 "event", flat=True
             )
         )
-        default_obj_mappings = set(
-            OrganizerDefaultObjectTypeMapping.objects.filter(
-                organizer=self.request.organizer
-            ).values_list("eventyay_object_type", "hubspot_object_type")
-        )
-
-        event_obj_mappings = {}
-        for obj_mapping in ObjectTypeMapping.objects.filter(event__in=events):
-            if obj_mapping.event_id not in event_obj_mappings:
-                event_obj_mappings[obj_mapping.event_id] = set()
-            event_obj_mappings[obj_mapping.event_id].add(
-                (obj_mapping.eventyay_object_type, obj_mapping.hubspot_object_type)
-            )
 
         custom_field_mappings_set = set(
             HubSpotFieldMapping.objects.filter(
                 event__in=events, source="custom"
             ).values_list("event", flat=True)
         )
+
+        total_default_fields = OrganizerDefaultFieldMapping.objects.filter(
+            object_type_mapping__organizer=self.request.organizer
+        ).count()
+
+        event_default_field_counts = {}
+        for row in (
+            HubSpotFieldMapping.objects.filter(
+                event__in=events, source="organizer_default"
+            )
+            .values("event")
+            .annotate(count=Count("id"))
+        ):
+            event_default_field_counts[row["event"]] = row["count"]
 
         for event in events:
             ev_settings = settings_map.get(event.id)
@@ -1362,12 +1365,12 @@ class OrganizerHubSpotSettingsView(
 
             # Mapping status
             has_custom_fields = event.id in custom_field_mappings_set
-            event_objs = event_obj_mappings.get(event.id, set())
+            default_fields_count = event_default_field_counts.get(event.id, 0)
 
             is_custom = False
             if has_custom_fields:
                 is_custom = True
-            elif event_objs and event_objs != default_obj_mappings:
+            elif default_fields_count != total_default_fields:
                 is_custom = True
 
             if is_custom:
