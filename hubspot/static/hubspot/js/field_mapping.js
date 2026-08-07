@@ -66,6 +66,78 @@ document.addEventListener('DOMContentLoaded', function() {
     // Bind initially existing remove buttons (for newly added rows in empty formset)
     bindRemoveButtons(tableBody);
 
+    function checkDuplicateHubspotProperties() {
+        var rows = tableBody.querySelectorAll('.formset-row');
+        var propMap = {};
+
+        // Collect hubspot_property values from visible, non-deleted rows
+        rows.forEach(function(row) {
+            if (row.style.display === 'none') return;
+            var delCheckbox = row.querySelector('input[name$="-DELETE"]');
+            if (delCheckbox && delCheckbox.checked) return;
+
+            var select = row.querySelector('select[name$="-hubspot_property"]');
+            if (!select || !select.value) return;
+
+            if (!propMap[select.value]) {
+                propMap[select.value] = [];
+            }
+            propMap[select.value].push(row);
+        });
+
+        // Clear all existing highlights and warnings
+        rows.forEach(function(row) {
+            row.classList.remove('duplicate-hubspot-property');
+            var warning = row.querySelector('.duplicate-hubspot-warning');
+            if (warning) warning.remove();
+        });
+
+        // Apply highlights to duplicates
+        Object.keys(propMap).forEach(function(prop) {
+            if (propMap[prop].length > 1) {
+                propMap[prop].forEach(function(row) {
+                    row.classList.add('duplicate-hubspot-property');
+                    var cell = row.querySelector('td:nth-child(2)');
+                    if (cell && !cell.querySelector('.duplicate-hubspot-warning')) {
+                        var warning = document.createElement('div');
+                        warning.className = 'duplicate-hubspot-warning';
+                        warning.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Duplicate HubSpot property';
+                        cell.appendChild(warning);
+                    }
+                });
+            }
+        });
+    }
+
+    // Run on page load
+    checkDuplicateHubspotProperties();
+
+    // Re-check when any hubspot_property select changes
+    tableBody.addEventListener('change', function(e) {
+        if (e.target && e.target.name && e.target.name.endsWith('-hubspot_property')) {
+            checkDuplicateHubspotProperties();
+        }
+    });
+
+    // Re-check after adding a row
+    addButton.addEventListener('click', function() {
+        setTimeout(checkDuplicateHubspotProperties, 50);
+    });
+
+    // Re-check after removing a row
+    tableBody.addEventListener('click', function(e) {
+        if (e.target && e.target.closest('.remove-form-row')) {
+            setTimeout(checkDuplicateHubspotProperties, 50);
+        }
+    });
+
+    // Re-check after identifier conflict resolution (radio changes visibility)
+    document.querySelectorAll('.resolve-identifier-radio').forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            setTimeout(checkDuplicateHubspotProperties, 50);
+        });
+    });
+
     var form = document.getElementById('field-mapping-form');
     if (form && form.getAttribute('data-is-fetching') === 'true') {
         var saveBtn = document.querySelector('.btn-save');

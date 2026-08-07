@@ -123,17 +123,82 @@ def test_apply_defaults_same_field_conflict(organizer, event, org_default_mappin
 
 @pytest.mark.django_db
 def test_conflict_auto_clears_on_delete(organizer, event, org_default_mapping):
+    """Conflict clears when the duplicate row for the same field is deleted."""
     _connect_event(event)
+
+    # Apply defaults -- this creates organizer_default rows for 'email' and 'total'.
+    apply_default_mappings_to_all_events(organizer)
+
+    with scope(organizer=organizer):
+        from django.contrib.contenttypes.models import ContentType
+        from eventyay.base.models import Order
+
+        content_type = ContentType.objects.get_for_model(Order)
+
+        # Simulate user adding a custom 'email' mapping (same field, different property).
+        # Now there are 2 rows for 'email': custom + organizer_default = conflict.
+        HubSpotFieldMapping.objects.create(
+            event=event,
+            content_type=content_type,
+            eventyay_field="email",
+            hubspot_object_type="contacts",
+            hubspot_property="alternate_email",
+            sync_mode=SyncMode.IDENTIFIER,
+            source="custom",
+        )
+
+    # Step 1: Apply defaults — detects the duplicate and flags conflict.
+    apply_default_mappings_to_all_events(organizer)
+
     with scope(organizer=organizer):
         ev_settings = HubSpotEventSettings.objects.get(event=event)
-        ev_settings.has_mapping_conflict = True
-        ev_settings.save()
+        assert ev_settings.has_mapping_conflict
 
-        # Assuming the conflict was on 'email', user deletes the 'email' row.
-        # Now there are no conflicts.
+    # Step 2: User resolves conflict by deleting the organizer_default 'email' row.
+    with scope(organizer=organizer):
+        HubSpotFieldMapping.objects.filter(
+            event=event,
+            eventyay_field="email",
+            source="organizer_default",
+        ).delete()
 
+    # Step 3: check_and_clear_mapping_conflict clears the flag.
     check_and_clear_mapping_conflict(event)
 
     with scope(organizer=organizer):
         ev_settings.refresh_from_db()
+        assert not ev_settings.has_mapping_conflict
+
+
+@pytest.mark.django_db
+def test_no_conflict_for_custom_on_different_fields(
+    organizer, event, org_default_mapping
+):
+    """Custom mappings on different fields than the defaults should not conflict."""
+    _connect_event(event)
+
+    with scope(organizer=organizer):
+        from django.contrib.contenttypes.models import ContentType
+        from eventyay.base.models import Order
+
+        content_type = ContentType.objects.get_for_model(Order)
+
+        # User has a custom mapping on 'phone' -- not overlapping with defaults.
+        ObjectTypeMapping.objects.create(
+            event=event, eventyay_object_type="order", hubspot_object_type="contacts"
+        )
+        HubSpotFieldMapping.objects.create(
+            event=event,
+            content_type=content_type,
+            eventyay_field="phone",
+            hubspot_object_type="contacts",
+            hubspot_property="mobilephone",
+            sync_mode=SyncMode.OVERWRITE,
+            source="custom",
+        )
+
+    apply_default_mappings_to_all_events(organizer)
+
+    with scope(organizer=organizer):
+        ev_settings = HubSpotEventSettings.objects.get(event=event)
         assert not ev_settings.has_mapping_conflict

@@ -764,6 +764,21 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
         eventyay_fields_dict = {
             f["key"]: f["label"] for f in setup["form_kwargs"]["eventyay_fields"]
         }
+
+        # Find the current organizer default identifier for this object type
+        org_default_identifier = None
+        org_default_otm = OrganizerDefaultObjectTypeMapping.objects.filter(
+            organizer=self.request.event.organizer,
+            eventyay_object_type=setup["mapping"].eventyay_object_type,
+            hubspot_object_type=setup["hubspot_object_type"],
+        ).first()
+        if org_default_otm:
+            org_default_id_field = org_default_otm.field_mappings.filter(
+                sync_mode=SyncMode.IDENTIFIER
+            ).first()
+            if org_default_id_field:
+                org_default_identifier = org_default_id_field.eventyay_field
+
         identifier_forms = []
         for idx, form in enumerate(context["formset"]):
             if (
@@ -777,7 +792,10 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
                             form.instance.eventyay_field, form.instance.eventyay_field
                         ),
                         "hubspot_property": form.instance.hubspot_property,
-                        "is_default": form.instance.source == "organizer_default",
+                        "is_default": (
+                            form.instance.source == "organizer_default"
+                            and form.instance.eventyay_field == org_default_identifier
+                        ),
                     }
                 )
 
@@ -798,14 +816,14 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
         if formset.is_valid():
             instances = formset.save(commit=False)
 
+            for obj in formset.deleted_objects:
+                obj.delete()
+
             for instance in instances:
                 instance.event = request.event
                 instance.content_type = setup["content_type"]
                 instance.hubspot_object_type = setup["hubspot_object_type"]
                 instance.save()
-
-            for obj in formset.deleted_objects:
-                obj.delete()
 
             if formset.has_changed():
                 setup["mapping"].save()

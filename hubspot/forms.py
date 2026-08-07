@@ -292,6 +292,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
 
         identifier_count = 0
         seen_fields = set()
+        seen_properties = set()
         for form in self.forms:
             if self.can_delete and self._should_delete_form(form):
                 continue
@@ -311,6 +312,18 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
                         code="duplicate_field",
                     )
                 seen_fields.add(eventyay_field)
+
+            hubspot_property = form.cleaned_data.get("hubspot_property")
+            if hubspot_property:
+                if hubspot_property in seen_properties:
+                    raise forms.ValidationError(
+                        _(
+                            "You cannot map multiple fields to the same HubSpot property ('%(prop)s')."
+                        ),
+                        params={"prop": hubspot_property},
+                        code="duplicate_property",
+                    )
+                seen_properties.add(hubspot_property)
 
         if identifier_count == 0:
             raise forms.ValidationError(

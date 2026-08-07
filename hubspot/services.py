@@ -429,7 +429,7 @@ def apply_default_mappings_to_all_events(organizer):
                     continue
 
                 for default_field in default_obj.field_mappings.all():
-                    existing_mapping = (
+                    existing_custom = (
                         HubSpotFieldMapping.objects.filter(
                             event=event,
                             content_type=content_type,
@@ -437,17 +437,10 @@ def apply_default_mappings_to_all_events(organizer):
                             hubspot_object_type=default_obj.hubspot_object_type,
                         )
                         .exclude(source="organizer_default")
-                        .first()
+                        .exists()
                     )
 
-                    if existing_mapping and (
-                        existing_mapping.hubspot_property
-                        == default_field.hubspot_property
-                        and existing_mapping.sync_mode == default_field.sync_mode
-                    ):
-                        continue
-
-                    if existing_mapping:
+                    if existing_custom:
                         conflict_found = True
 
                     if default_field.sync_mode == SyncMode.IDENTIFIER:
@@ -510,21 +503,14 @@ def check_and_clear_mapping_conflict(event):
                 continue
 
             for default_field in default_obj.field_mappings.all():
-                existing_mapping = (
-                    HubSpotFieldMapping.objects.filter(
-                        event=event,
-                        content_type=content_type,
-                        eventyay_field=default_field.eventyay_field,
-                        hubspot_object_type=default_obj.hubspot_object_type,
-                    )
-                    .exclude(source="organizer_default")
-                    .first()
-                )
+                duplicate_count = HubSpotFieldMapping.objects.filter(
+                    event=event,
+                    content_type=content_type,
+                    eventyay_field=default_field.eventyay_field,
+                    hubspot_object_type=default_obj.hubspot_object_type,
+                ).count()
 
-                if existing_mapping and (
-                    existing_mapping.hubspot_property != default_field.hubspot_property
-                    or existing_mapping.sync_mode != default_field.sync_mode
-                ):
+                if duplicate_count > 1:
                     conflict_found = True
                     break
 
@@ -552,4 +538,4 @@ def check_and_clear_mapping_conflict(event):
 
         if not conflict_found:
             settings.has_mapping_conflict = False
-            settings.save()
+            settings.save(update_fields=["has_mapping_conflict"])
