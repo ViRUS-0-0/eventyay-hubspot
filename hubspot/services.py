@@ -502,6 +502,18 @@ def check_and_clear_mapping_conflict(event):
             else:
                 continue
 
+            # Check for multiple identifiers
+            identifier_count = HubSpotFieldMapping.objects.filter(
+                event=event,
+                content_type=content_type,
+                hubspot_object_type=default_obj.hubspot_object_type,
+                sync_mode=SyncMode.IDENTIFIER,
+            ).count()
+
+            if identifier_count > 1:
+                conflict_found = True
+                break
+
             for default_field in default_obj.field_mappings.all():
                 duplicate_count = HubSpotFieldMapping.objects.filter(
                     event=event,
@@ -513,25 +525,6 @@ def check_and_clear_mapping_conflict(event):
                 if duplicate_count > 1:
                     conflict_found = True
                     break
-
-                if default_field.sync_mode == SyncMode.IDENTIFIER:
-                    existing_identifier = (
-                        HubSpotFieldMapping.objects.filter(
-                            event=event,
-                            content_type=content_type,
-                            hubspot_object_type=default_obj.hubspot_object_type,
-                            sync_mode=SyncMode.IDENTIFIER,
-                        )
-                        .exclude(source="organizer_default")
-                        .first()
-                    )
-                    if (
-                        existing_identifier
-                        and existing_identifier.eventyay_field
-                        != default_field.eventyay_field
-                    ):
-                        conflict_found = True
-                        break
 
             if conflict_found:
                 break

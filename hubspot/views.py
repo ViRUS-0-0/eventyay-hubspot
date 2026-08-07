@@ -1328,6 +1328,22 @@ class OrganizerHubSpotSettingsView(
             ).values_list("event", flat=True)
         )
 
+        default_objects_set = set(
+            OrganizerDefaultObjectTypeMapping.objects.filter(
+                organizer=self.request.organizer
+            ).values_list("eventyay_object_type", "hubspot_object_type")
+        )
+
+        from collections import defaultdict
+
+        event_objects_map = defaultdict(set)
+        for obj in ObjectTypeMapping.objects.filter(event__in=events).values(
+            "event", "eventyay_object_type", "hubspot_object_type"
+        ):
+            event_objects_map[obj["event"]].add(
+                (obj["eventyay_object_type"], obj["hubspot_object_type"])
+            )
+
         total_default_fields = OrganizerDefaultFieldMapping.objects.filter(
             object_type_mapping__organizer=self.request.organizer
         ).count()
@@ -1365,10 +1381,16 @@ class OrganizerHubSpotSettingsView(
 
             # Mapping status
             has_custom_fields = event.id in custom_field_mappings_set
+
+            event_objects = event_objects_map.get(event.id, set())
+            has_custom_objects = False
+            if event_objects and event_objects != default_objects_set:
+                has_custom_objects = True
+
             default_fields_count = event_default_field_counts.get(event.id, 0)
 
             is_custom = False
-            if has_custom_fields:
+            if has_custom_fields or has_custom_objects:
                 is_custom = True
             elif default_fields_count != total_default_fields:
                 is_custom = True
