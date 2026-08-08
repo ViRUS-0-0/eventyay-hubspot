@@ -6,16 +6,17 @@ import urllib.parse
 
 import requests
 from django.contrib import messages
-from django.shortcuts import redirect
-from django.urls import reverse
+from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
+from django.forms import modelformset_factory
+from django.shortcuts import redirect
+from django.urls import reverse
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView, TemplateView, View
 from django_scopes import scope
 from eventyay.base.models import Event, Order, OrderPosition, Organizer
-
 from eventyay.control.permissions import (
     EventPermissionRequiredMixin,
     OrganizerPermissionRequiredMixin,
@@ -25,14 +26,12 @@ from eventyay.control.views.organizer_views.organizer_detail_view_mixin import (
     OrganizerDetailViewMixin,
 )
 
-from django.contrib.contenttypes.models import ContentType
-from django.forms import modelformset_factory
-
+from .field_discovery import get_available_fields
 from .forms import (
-    HubSpotLogFilterForm,
     BaseHubSpotFieldMappingFormSet,
     HubSpotEventSettingsForm,
     HubSpotFieldMappingForm,
+    HubSpotLogFilterForm,
     ObjectTypeMappingFormSet,
 )
 from .models import (
@@ -42,23 +41,22 @@ from .models import (
     HubSpotFieldMapping,
     HubSpotOAuthToken,
     ObjectTypeMapping,
-    OrganizerHubSpotSettings,
     OrganizerHubSpotOAuthToken,
+    OrganizerHubSpotSettings,
     SyncAction,
     SyncDirection,
     SyncLog,
     SyncStatus,
 )
-from .field_discovery import get_available_fields
 from .services import get_hubspot_properties, get_valid_hubspot_token, is_sync_enabled
-from .utils import get_hubspot_activity_logs
-from .tasks import sync_all_mappings_task, sync_order_to_hubspot
 from .sync_logic import (
-    get_sync_status_counts,
-    get_pending_sync_records,
-    get_failed_sync_records,
     clear_sync_status_cache,
+    get_failed_sync_records,
+    get_pending_sync_records,
+    get_sync_status_counts,
 )
+from .tasks import sync_all_mappings_task, sync_order_to_hubspot
+from .utils import get_hubspot_activity_logs
 
 
 def get_client_ip(request):
@@ -834,9 +832,11 @@ class SyncProblemsView(EventPermissionRequiredMixin, PaginationMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-        from .forms import SyncProblemsFilterForm
         from datetime import datetime, time
+
         from django.utils.timezone import make_aware
+
+        from .forms import SyncProblemsFilterForm
 
         self.filter_form = SyncProblemsFilterForm(
             data=self.request.GET, prefix="filter"

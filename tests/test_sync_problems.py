@@ -1,21 +1,22 @@
 import pytest
-from django.urls import reverse
 from django.contrib.contenttypes.models import ContentType
+from django.urls import reverse
 from django.utils.timezone import now
-from eventyay.base.models import Order
 from django_scopes import scope
+from eventyay.base.models import Order
+
 from hubspot.models import (
-    HubSpotOAuthToken,
+    EventyayObjectType,
     HubSpotEventSettings,
-    ObjectTypeMapping,
-    HubSpotObjectMapping,
     HubSpotFieldMapping,
-    SyncLog,
+    HubSpotOAuthToken,
+    HubSpotObjectMapping,
+    HubSpotObjectType,
+    ObjectTypeMapping,
     SyncAction,
     SyncDirection,
+    SyncLog,
     SyncStatus,
-    EventyayObjectType,
-    HubSpotObjectType,
 )
 
 

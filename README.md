@@ -26,7 +26,7 @@ This is a plugin for [Eventyay](https://github.com/fossasia/eventyay) that enabl
 This repository enforces code style guidelines via CI. You can run checks locally by installing the development dependencies:
 
 ```bash
-pip install pre-commit ruff black
+pip install pre-commit ruff
 pre-commit install
 
 pre-commit run --all-files

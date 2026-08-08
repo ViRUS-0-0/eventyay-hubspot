@@ -1,13 +1,13 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from eventyay.base.forms.widgets import DatePickerWidget
 from eventyay.base.models import Event
 from eventyay.control.forms.filter import FilterForm
-from eventyay.base.forms.widgets import DatePickerWidget
 
 from .models import (
     HubSpotEventSettings,
-    ObjectTypeMapping,
     HubSpotFieldMapping,
+    ObjectTypeMapping,
     SyncMode,
 )
 
@@ -264,9 +264,9 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
                 (SyncMode.IDENTIFIER, _("Identifier"))
             ]
             form.fields["sync_mode"].widget.attrs["readonly"] = True
-            form.fields["sync_mode"].widget.attrs[
-                "style"
-            ] = "pointer-events: none; background-color: #eee;"
+            form.fields["sync_mode"].widget.attrs["style"] = (
+                "pointer-events: none; background-color: #eee;"
+            )
             if not form.initial.get("sync_mode"):
                 form.initial["sync_mode"] = SyncMode.IDENTIFIER
         else:

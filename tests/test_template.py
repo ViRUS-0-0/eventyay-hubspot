@@ -1,7 +1,8 @@
 import pytest
 from django.urls import reverse
 from django_scopes import scope
-from hubspot.models import HubSpotOAuthToken, HubSpotEventSettings
+
+from hubspot.models import HubSpotEventSettings, HubSpotOAuthToken
 
 
 @pytest.mark.django_db

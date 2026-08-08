@@ -1,32 +1,37 @@
+from datetime import timedelta
+
+from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
+from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.template.loader import get_template
 from django.urls import resolve, reverse
+from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
-from django.contrib.contenttypes.models import ContentType
-from django.core.cache import cache
-from eventyay.base.models import Order, OrderPosition
-from eventyay.base.signals import periodic_task
-from django.db import transaction
-from eventyay.control.signals import nav_event, nav_organizer
-from eventyay.control.signals import order_info
 from django_scopes import scope
-from eventyay.base.signals import order_placed, order_paid, order_canceled
-from .tasks import sync_order_to_hubspot
+from eventyay.base.models import Order, OrderPosition
+from eventyay.base.signals import (
+    order_canceled,
+    order_paid,
+    order_placed,
+    periodic_task,
+)
+from eventyay.control.signals import nav_event, nav_organizer, order_info
+
 from .models import (
-    HubSpotEventSettings,
-    ObjectTypeMapping,
-    HubSpotFieldMapping,
-    HubSpotObjectMapping,
-    HubSpotOAuthToken,
     AuditLog,
-    SyncLog,
+    HubSpotEventSettings,
+    HubSpotFieldMapping,
+    HubSpotOAuthToken,
+    HubSpotObjectMapping,
+    ObjectTypeMapping,
     SyncAction,
     SyncDirection,
+    SyncLog,
     SyncStatus,
 )
-from django.utils.timezone import now
-from datetime import timedelta
+from .tasks import sync_order_to_hubspot
 
 
 @receiver(nav_event, dispatch_uid="hubspot_nav")
@@ -77,8 +82,8 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
     with scope(organizer=order.event.organizer):
         from .services import (
             get_valid_hubspot_token,
-            is_sync_enabled,
             is_auto_sync_enabled,
+            is_sync_enabled,
         )
 
         if not is_sync_enabled(order.event):

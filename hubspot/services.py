@@ -1,7 +1,9 @@
 import datetime
-import os
 import logging
+import os
+
 import requests
+from django.core.cache import cache
 from django.db import transaction
 from django.utils.timezone import now
 from django_scopes import scope
@@ -18,7 +20,6 @@ from .models import (
     SyncLog,
     SyncStatus,
 )
-from django.core.cache import cache
 
 
 class HubSpotFetchError(Exception):

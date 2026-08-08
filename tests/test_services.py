@@ -1,24 +1,24 @@
 import datetime
-import requests
 from unittest import mock
 
 import pytest
+import requests
+from django.core.cache import cache
 from django.utils.timezone import now
 from django_scopes import scope
-from django.core.cache import cache
 
 from hubspot.models import (
-    HubSpotOAuthToken,
     HubSpotEventSettings,
-    OrganizerHubSpotSettings,
+    HubSpotOAuthToken,
     OrganizerHubSpotOAuthToken,
+    OrganizerHubSpotSettings,
 )
 from hubspot.services import (
-    get_valid_hubspot_token,
-    get_hubspot_properties,
-    sync_hubspot_properties,
     HubSpotFetchError,
+    get_hubspot_properties,
+    get_valid_hubspot_token,
     is_sync_enabled,
+    sync_hubspot_properties,
 )
 
 

@@ -2,14 +2,13 @@ import pytest
 import responses
 from django.contrib.messages import get_messages
 from django.urls import reverse
-
 from django_scopes import scope
 
 from hubspot.models import (
     HubSpotOAuthToken,
-    SyncLog,
-    SyncAction,
     OrganizerHubSpotOAuthToken,
+    SyncAction,
+    SyncLog,
 )
 
 

@@ -10,10 +10,10 @@ from hubspot.client import (
     HubSpotPermanentError,
     HubSpotTransientError,
     create_record,
-    update_record,
     get_record,
+    update_record,
 )
-from hubspot.models import HubSpotOAuthToken, HubSpotEventSettings
+from hubspot.models import HubSpotEventSettings, HubSpotOAuthToken
 
 
 @pytest.fixture

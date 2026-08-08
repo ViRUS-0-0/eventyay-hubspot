@@ -1,10 +1,12 @@
 import datetime
-from django.utils.timezone import now
-import pytest
 from unittest import mock
+
+import pytest
+from django.utils.timezone import now
+from django_scopes import scopes_disabled
+
 from hubspot.models import HubSpotEventSettings
 from hubspot.signals import _enqueue_hubspot_sync
-from django_scopes import scopes_disabled
 
 
 @pytest.fixture(autouse=True)

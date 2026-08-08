@@ -1,20 +1,21 @@
 import datetime
-from django.utils.timezone import now
-import pytest
 from unittest import mock
+
+import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
+from django.utils.timezone import now
 from django_scopes import scopes_disabled
-
 from eventyay.base.models import Order
+
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotOAuthToken,
     HubSpotObjectMapping,
-    SyncLog,
-    SyncStatus,
     SyncAction,
     SyncDirection,
+    SyncLog,
+    SyncStatus,
 )
 from hubspot.signals import control_order_info
 

@@ -2,30 +2,23 @@ import logging
 from typing import Any, Dict
 
 from celery import shared_task
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 from django.db import transaction
+from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
-from django.conf import settings
-from django.urls import reverse
-from django.core.cache import cache
-
 from eventyay.base.models import Event, Order, OrderPosition
 
 from .client import (
-    HubSpotTransientError,
+    HubSpotConflictError,
     HubSpotPermanentError,
     HubSpotRecordNotFoundError,
-    HubSpotConflictError,
+    HubSpotTransientError,
     create_record,
-    update_record,
     get_record,
-)
-from .services import (
-    get_valid_hubspot_token,
-    get_hubspot_properties,
-    sync_hubspot_properties,
-    HubSpotFetchError,
+    update_record,
 )
 from .models import (
     HubSpotFieldMapping,
@@ -37,7 +30,12 @@ from .models import (
     SyncMode,
     SyncStatus,
 )
-
+from .services import (
+    HubSpotFetchError,
+    get_hubspot_properties,
+    get_valid_hubspot_token,
+    sync_hubspot_properties,
+)
 
 logger = logging.getLogger(__name__)
 

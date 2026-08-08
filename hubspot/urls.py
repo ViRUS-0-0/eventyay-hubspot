@@ -1,21 +1,22 @@
 from django.urls import path
+
 from hubspot.views import (
+    DismissSyncView,
     EventHubSpotCallbackView,
     EventHubSpotConnectView,
     EventHubSpotDisconnectView,
     EventHubSpotFieldMappingView,
-    EventHubSpotSettingsView,
     EventHubSpotLogView,
+    EventHubSpotSettingsView,
     EventHubSpotSyncMappingView,
-    OrganizerHubSpotSettingsView,
     OrganizerHubSpotConnectView,
     OrganizerHubSpotDisconnectView,
-    SyncProblemsView,
-    RetrySyncView,
+    OrganizerHubSpotSettingsView,
     RetryAllFailedView,
-    SyncRetryBulkView,
-    DismissSyncView,
+    RetrySyncView,
     SyncOrderNowView,
+    SyncProblemsView,
+    SyncRetryBulkView,
 )
 
 urlpatterns = [

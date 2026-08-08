@@ -1,18 +1,20 @@
-import pytest
-from django.urls import reverse
-from unittest import mock
-from django_scopes import scope
-from django.utils.timezone import now
 from datetime import timedelta
+from unittest import mock
+
+import pytest
+import requests
+from django.urls import reverse
+from django.utils.timezone import now
+from django_scopes import scope
 from eventyay.base.models import Event, Organizer
+
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotOAuthToken,
     ObjectTypeMapping,
-    OrganizerHubSpotSettings,
     OrganizerHubSpotOAuthToken,
+    OrganizerHubSpotSettings,
 )
-import requests
 
 
 @pytest.mark.django_db
@@ -143,7 +145,7 @@ def test_hubspot_disconnect_view_revoke_failure_still_clears(
 def test_hubspot_settings_save_auto_sync_audit_log(
     logged_in_organizer_client, organizer, event, settings
 ):
-    from hubspot.models import AuditLog, AuditAction, HubSpotEventSettings
+    from hubspot.models import AuditAction, AuditLog, HubSpotEventSettings
 
     settings.SITE_URL = "https://testserver"
 

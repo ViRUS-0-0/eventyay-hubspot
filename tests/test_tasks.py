@@ -1,7 +1,12 @@
-import pytest
 from unittest import mock
+
+import pytest
+from celery.exceptions import Retry
 from django.contrib.contenttypes.models import ContentType
+from django_scopes import scopes_disabled
 from eventyay.base.models import InvoiceAddress
+
+from hubspot.client import HubSpotPermanentError, HubSpotTransientError
 from hubspot.models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
@@ -15,9 +20,6 @@ from hubspot.tasks import (
     _convert_value,
     sync_order_to_hubspot,
 )
-from hubspot.client import HubSpotTransientError, HubSpotPermanentError
-from django_scopes import scopes_disabled
-from celery.exceptions import Retry
 
 
 @pytest.fixture(autouse=True)
@@ -43,9 +45,11 @@ def test_convert_value():
 @pytest.fixture
 def mock_event(event):
     HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
-    from hubspot.models import HubSpotOAuthToken
-    from django.utils.timezone import now
     import datetime
+
+    from django.utils.timezone import now
+
+    from hubspot.models import HubSpotOAuthToken
 
     HubSpotOAuthToken.objects.create(
         event=event,
@@ -305,9 +309,10 @@ def test_permanent_error_no_retry(
 @pytest.mark.django_db
 @mock.patch("hubspot.tasks.sync_hubspot_properties")
 def test_refresh_hubspot_properties_task_retries_and_error(mock_sync, mock_event):
-    from hubspot.tasks import refresh_hubspot_properties_task
-    from hubspot.services import HubSpotFetchError
     from django.core.cache import cache
+
+    from hubspot.services import HubSpotFetchError
+    from hubspot.tasks import refresh_hubspot_properties_task
 
     cache.clear()
     assert refresh_hubspot_properties_task.max_retries == 3
