@@ -2,6 +2,21 @@
 
 We welcome contributions to the Eventyay Hubspot plugin! This plugin integrates Eventyay events with HubSpot, syncing data like attendees, orders, and custom fields.
 
+## Support & Community Guidelines
+
+If you need help or want to discuss a feature before building it:
+- Check the [Eventyay Documentation](https://docs.eventyay.com) for core platform concepts.
+- Review existing GitHub Issues or open a new one to ask questions.
+
+## Repository Layout
+
+Understanding the repository structure will help you navigate the codebase:
+
+- `hubspot/`: Main application code containing Django models, views, services, signals, forms, and templates.
+- `tests/`: Comprehensive test suite using `pytest`.
+- `pyproject.toml`: The central configuration file for the Python project. It manages dependencies and registers the Hubspot integration as a discoverable plugin within the core Eventyay platform.
+- `Makefile`: Helpful commands for tasks like compiling translations.
+
 ## Getting Started
 
 1. Set up a working [Eventyay Development Setup](https://github.com/fossasia/eventyay) as this plugin requires the core platform to run.
@@ -30,6 +45,31 @@ We welcome contributions to the Eventyay Hubspot plugin! This plugin integrates 
    make
    ```
 
+## Architecture Rules for Contributors
+
+When developing for the Hubspot plugin, respect the following architectural separations:
+- **Models**: Defines database schema. Keep logic in models minimal.
+- **Views**: Handles HTTP requests and responses. Should generally delegate complex logic to services.
+- **Services**: Contains the core business logic, such as data syncing, Hubspot API interactions, and data transformations.
+- **Signals**: Listens for core Eventyay events (e.g., ticket purchased, attendee updated) and triggers tasks to sync data to HubSpot.
+- **Tasks**: Background processing jobs using Celery to ensure smooth asynchronous data syncs.
+
+Ensure that any queries fetching Eventyay data are appropriately scoped to the event using `django_scopes.scope(event=event)`.
+
+## API and Service Endpoints
+
+The most crucial endpoints in this plugin manage the HubSpot OAuth flow and integration setup:
+- **OAuth Callback**: Handled by views that capture the authorization code from HubSpot and exchange it for an access token.
+- **Plugin Settings**: Found within the Eventyay Control Panel (under the event's plugin settings). This handles the user interface for authenticating and configuring the integration.
+- **Data Sync Services**: Logic residing in the `services/` directory is responsible for pushing data to HubSpot endpoints (e.g., Contacts, Deals).
+
+## AI-Assisted Development
+
+If you use AI tools (like GitHub Copilot, Cursor, Claude, etc.) to help write code:
+- **Review everything:** Always review the AI-generated code for accuracy, security, and adherence to our architectural conventions.
+- **Test thoroughly:** Do not submit AI-generated code without writing corresponding tests and verifying it works locally.
+- **Avoid hallucinations:** AI might invent non-existent Eventyay core functions or imports. Always verify API endpoints and module paths against the actual codebase.
+
 ## Branch creation
 
 Create a **new branch from the default branch** for every change. Do not commit directly to the default branch.
@@ -41,7 +81,7 @@ Use a **prefix that describes the kind of change**, then a short slug. Use the s
 | Prefix | When to use | Example |
 |--------|-------------|---------|
 | `feat/` or `feature/` | New functionality | `feat/sync-custom-fields` |
-| `fix/` or `fix-` | Bug fix | `fix/attendee-sync-error` |
+| `fix/` | Bug fix | `fix/attendee-sync-error` |
 | `chore/` or `patch/` | Tooling, deps, housekeeping | `chore/update-dependencies` |
 | `docs/` | Documentation only | `docs/add-setup-guide` |
 | `test/` | Test-only changes | `test/hubspot-auth-mock` |
@@ -91,11 +131,12 @@ To run the tests, activate your core eventyay development virtual environment an
 pytest tests/
 ```
 
-## Further Reading
+## Troubleshooting
 
-- The `hubspot/` directory contains the main application code (models, views, services, signals).
-- The `tests/` directory contains the comprehensive pytest suite.
-- Refer to the main [Eventyay documentation](https://docs.eventyay.com) for broader platform architecture and plugin development concepts.
+- **Tests fail with "ModuleNotFoundError"**: Ensure you have activated the virtual environment of the *core Eventyay repository* before running pytest.
+- **HubSpot OAuth Error**: Double-check that your `HUBSPOT_REDIRECT_URI` exactly matches the one you registered in your HubSpot Developer Portal app.
+- **Plugin not showing up in Eventyay**: Ensure you installed it in editable mode (`uv pip install -e .`) within the correct virtual environment, and that you restarted your local Eventyay development server.
+
 
 ## Licensing
 
