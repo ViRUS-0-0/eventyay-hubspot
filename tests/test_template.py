@@ -6,9 +6,7 @@ from hubspot.models import HubSpotEventSettings, HubSpotOAuthToken
 
 
 @pytest.mark.django_db
-def test_disconnected_shows_connect_button(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_disconnected_shows_connect_button(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:hubspot",
@@ -23,9 +21,7 @@ def test_disconnected_shows_connect_button(
 
 
 @pytest.mark.django_db
-def test_connected_shows_disconnect_button_and_portal_info(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_connected_shows_disconnect_button_and_portal_info(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     with scope(organizer=organizer):
         HubSpotOAuthToken.objects.create(
@@ -52,9 +48,7 @@ def test_connected_shows_disconnect_button_and_portal_info(
 
 
 @pytest.mark.django_db
-def test_no_token_values_in_rendered_output(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_no_token_values_in_rendered_output(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     with scope(organizer=organizer):
         token = HubSpotOAuthToken.objects.create(

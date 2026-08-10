@@ -62,10 +62,11 @@ omit = [
 
 [tool.ruff]
 line-length = 120
+extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.format]
 indent-style = "space"
-quote-style = "single"
+quote-style = "double"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "PLE", "PLW", "UP"]
@@ -73,7 +74,6 @@ ignore = ["E722", "E741"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]
-"**/migrations/*.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2

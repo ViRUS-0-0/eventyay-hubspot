@@ -1,6 +1,7 @@
 from django.utils.translation import gettext_lazy as _
 from eventyay.base.models import Question
 
+
 QUESTION_TYPE_MAP = {
     Question.TYPE_NUMBER: "number",
     Question.TYPE_BOOLEAN: "yes/no",
@@ -456,6 +457,4 @@ def get_available_fields(object_type: str, event=None) -> list[dict]:
 
         return fields
 
-    raise ValueError(
-        f"Unknown object_type: {object_type!r}. Expected 'order' or 'order_position'."
-    )
+    raise ValueError(f"Unknown object_type: {object_type!r}. Expected 'order' or 'order_position'.")

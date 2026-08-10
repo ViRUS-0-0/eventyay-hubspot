@@ -5,6 +5,7 @@ import requests
 
 from .services import get_valid_hubspot_token
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,9 +21,7 @@ class HubSpotAPIError(Exception):
 class HubSpotTransientError(HubSpotAPIError):
     """5xx, 429, timeouts — safe to retry."""
 
-    def __init__(
-        self, message, status_code=None, response_body=None, retry_after_seconds=None
-    ):
+    def __init__(self, message, status_code=None, response_body=None, retry_after_seconds=None):
         super().__init__(message, status_code, response_body)
         self.retry_after_seconds = retry_after_seconds
 
@@ -157,18 +156,12 @@ def create_record(event, object_type: str, properties: dict) -> str:
         except ValueError:
             response_body = response.text
 
-        error_msg = (
-            response_body.get("message", "")
-            if isinstance(response_body, dict)
-            else str(response_body)
-        )
+        error_msg = response_body.get("message", "") if isinstance(response_body, dict) else str(response_body)
         match = re.search(r"Existing ID:\s*(\d+)", error_msg)
 
         if match:
             existing_id = match.group(1)
-            logger.info(
-                f"HubSpot 409 Conflict for {object_type}. Existing ID: {existing_id}."
-            )
+            logger.info(f"HubSpot 409 Conflict for {object_type}. Existing ID: {existing_id}.")
             raise HubSpotConflictError(
                 message=f"HubSpot API conflict: record already exists with ID {existing_id}.",
                 existing_id=existing_id,

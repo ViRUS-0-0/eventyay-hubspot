@@ -175,9 +175,7 @@ def test_order_info_pending_no_mapping(client, event, order, organizer):
 
 @pytest.mark.django_db
 @mock.patch("hubspot.views.sync_order_to_hubspot.apply_async")
-def test_sync_now_view(
-    mock_apply, logged_in_organizer_client, event, order, organizer, settings
-):
+def test_sync_now_view(mock_apply, logged_in_organizer_client, event, order, organizer, settings):
     settings.SITE_URL = "https://testserver"
 
     order.status = Order.STATUS_PAID

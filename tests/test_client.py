@@ -84,9 +84,7 @@ def test_create_409_raises_conflict(mock_post, event, hubspot_token):
     mock_post_response = mock.Mock()
     mock_post_response.ok = False
     mock_post_response.status_code = 409
-    mock_post_response.json.return_value = {
-        "message": "Contact already exists. Existing ID: 98765"
-    }
+    mock_post_response.json.return_value = {"message": "Contact already exists. Existing ID: 98765"}
     mock_post.return_value = mock_post_response
 
     from hubspot.client import HubSpotConflictError

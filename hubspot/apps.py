@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from . import __version__
 
+
 try:
     from eventyay.base.plugins import PluginConfig
 except ImportError as e:

@@ -115,9 +115,7 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
         # Deduplicate multiple signals for the same order within a short window
         cache_key = f"hubspot_sync_enqueued_{order.id}"
         if cache.add(cache_key, "1", timeout=5):
-            sync_order_to_hubspot.apply_async(
-                args=[order.id, order.event.id], countdown=5
-            )
+            sync_order_to_hubspot.apply_async(args=[order.id, order.event.id], countdown=5)
 
     transaction.on_commit(enqueue_task)
 
@@ -180,9 +178,7 @@ def clear_audit_logs(sender, **kwargs):
 
 @receiver(order_info, dispatch_uid="hubspot_control_order_info")
 def control_order_info(sender, request, order, **kwargs):
-    if not request.user.has_event_permission(
-        request.organizer, request.event, "can_view_orders", request
-    ):
+    if not request.user.has_event_permission(request.organizer, request.event, "can_view_orders", request):
         return ""
 
     is_connected = False
@@ -217,11 +213,7 @@ def control_order_info(sender, request, order, **kwargs):
 
     if mappings:
         mapping_ids = [m.id for m in mappings]
-        latest_log = (
-            SyncLog.objects.filter(object_mapping_id__in=mapping_ids)
-            .order_by("-created_at")
-            .first()
-        )
+        latest_log = SyncLog.objects.filter(object_mapping_id__in=mapping_ids).order_by("-created_at").first()
         last_synced_at = max(
             (m.last_synced_at for m in mappings if m.last_synced_at is not None),
             default=None,
@@ -273,9 +265,7 @@ def control_order_info(sender, request, order, **kwargs):
             if not has_mapping_changes:
                 sync_needed = False
 
-    can_sync = request.user.has_event_permission(
-        request.organizer, request.event, "can_change_event_settings", request
-    )
+    can_sync = request.user.has_event_permission(request.organizer, request.event, "can_change_event_settings", request)
 
     template = get_template("hubspot/control_order_info.html")
     ctx = {

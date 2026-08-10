@@ -19,6 +19,7 @@ from hubspot.views import (
     SyncRetryBulkView,
 )
 
+
 urlpatterns = [
     path(
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/",

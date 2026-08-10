@@ -46,9 +46,7 @@ class HubSpotOAuthToken(models.Model):
     objects = ScopedManager(organizer="event__organizer")
     _access_token = models.TextField(db_column="access_token")
     _refresh_token = models.TextField(db_column="refresh_token")
-    token_type = models.CharField(
-        max_length=50, choices=TokenType.choices, default=TokenType.BEARER
-    )
+    token_type = models.CharField(max_length=50, choices=TokenType.choices, default=TokenType.BEARER)
     expires_at = models.DateTimeField(null=True, blank=True)
     hub_id = models.CharField(max_length=100, blank=True)
     hub_name = models.CharField(max_length=200, blank=True)
@@ -100,9 +98,7 @@ class OrganizerHubSpotOAuthToken(models.Model):
     objects = ScopedManager(organizer="organizer")
     _access_token = models.TextField(db_column="access_token")
     _refresh_token = models.TextField(db_column="refresh_token")
-    token_type = models.CharField(
-        max_length=50, choices=TokenType.choices, default=TokenType.BEARER
-    )
+    token_type = models.CharField(max_length=50, choices=TokenType.choices, default=TokenType.BEARER)
     expires_at = models.DateTimeField(null=True, blank=True)
     hub_id = models.CharField(max_length=100, blank=True)
     hub_name = models.CharField(max_length=200, blank=True)
@@ -138,9 +134,7 @@ class HubSpotEventSettings(models.Model):
     event = models.OneToOneField("base.Event", on_delete=models.CASCADE)
     objects = ScopedManager(organizer="event__organizer")
     sync_enabled = models.BooleanField(default=False)
-    auto_sync_enabled = models.BooleanField(
-        default=True, verbose_name=_("Sync automatically")
-    )
+    auto_sync_enabled = models.BooleanField(default=True, verbose_name=_("Sync automatically"))
     sync_contacts = models.BooleanField(default=True)
     sync_deals = models.BooleanField(default=True)
     deal_pipeline = models.CharField(max_length=200, blank=True)
@@ -188,9 +182,7 @@ class HubSpotFieldMapping(models.Model):
     eventyay_field = models.CharField(max_length=190)
     hubspot_object_type = models.CharField(max_length=50)
     hubspot_property = models.CharField(max_length=190)
-    sync_mode = models.CharField(
-        max_length=20, choices=SyncMode.choices, default=SyncMode.OVERWRITE
-    )
+    sync_mode = models.CharField(max_length=20, choices=SyncMode.choices, default=SyncMode.OVERWRITE)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -212,9 +204,7 @@ class HubSpotFieldMapping(models.Model):
 class SyncLog(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
     objects = ScopedManager(organizer="event__organizer")
-    object_mapping = models.ForeignKey(
-        HubSpotObjectMapping, null=True, blank=True, on_delete=models.SET_NULL
-    )
+    object_mapping = models.ForeignKey(HubSpotObjectMapping, null=True, blank=True, on_delete=models.SET_NULL)
     action = models.CharField(max_length=20, choices=SyncAction.choices)
     direction = models.CharField(max_length=10, choices=SyncDirection.choices)
     status = models.CharField(max_length=10, choices=SyncStatus.choices)
@@ -247,9 +237,7 @@ class AuditAction(models.TextChoices):
 
 class AuditLog(models.Model):
     organizer = models.ForeignKey("base.Organizer", on_delete=models.CASCADE)
-    event = models.ForeignKey(
-        "base.Event", null=True, blank=True, on_delete=models.SET_NULL
-    )
+    event = models.ForeignKey("base.Event", null=True, blank=True, on_delete=models.SET_NULL)
     action = models.CharField(max_length=20, choices=AuditAction.choices)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -277,12 +265,8 @@ class HubSpotObjectType(models.TextChoices):
 class ObjectTypeMapping(models.Model):
     event = models.ForeignKey("base.Event", on_delete=models.CASCADE)
     objects = ScopedManager(organizer="event__organizer")
-    eventyay_object_type = models.CharField(
-        max_length=50, choices=EventyayObjectType.choices
-    )
-    hubspot_object_type = models.CharField(
-        max_length=50, choices=HubSpotObjectType.choices
-    )
+    eventyay_object_type = models.CharField(max_length=50, choices=EventyayObjectType.choices)
+    hubspot_object_type = models.CharField(max_length=50, choices=HubSpotObjectType.choices)
     position = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -294,7 +278,4 @@ class ObjectTypeMapping(models.Model):
         ordering = ["position", "pk"]
 
     def __str__(self):
-        return (
-            f"{self.get_eventyay_object_type_display()}"
-            f" \u2192 {self.get_hubspot_object_type_display()}"
-        )
+        return f"{self.get_eventyay_object_type_display()} \u2192 {self.get_hubspot_object_type_display()}"

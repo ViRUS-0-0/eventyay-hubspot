@@ -13,9 +13,7 @@ from hubspot.models import (
 
 
 @pytest.mark.django_db
-def test_connect_view_redirects_to_hubspot(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_connect_view_redirects_to_hubspot(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:connect",
@@ -53,9 +51,7 @@ def test_callback_view_success(logged_in_organizer_client, organizer, event, set
 
     url = reverse("plugins:hubspot:callback")
     state_param = f"valid_state:{organizer.slug}:{event.slug}"
-    response = logged_in_organizer_client.get(
-        url, {"state": state_param, "code": "auth_code"}
-    )
+    response = logged_in_organizer_client.get(url, {"state": state_param, "code": "auth_code"})
 
     assert response.status_code == 302
     assert response.url == reverse(
@@ -72,9 +68,7 @@ def test_callback_view_success(logged_in_organizer_client, organizer, event, set
 
 
 @pytest.mark.django_db
-def test_callback_view_invalid_state(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_callback_view_invalid_state(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
     session = logged_in_organizer_client.session
@@ -83,9 +77,7 @@ def test_callback_view_invalid_state(
 
     url = reverse("plugins:hubspot:callback")
     state_param = f"invalid_state:{organizer.slug}:{event.slug}"
-    response = logged_in_organizer_client.get(
-        url, {"state": state_param, "code": "auth_code"}
-    )
+    response = logged_in_organizer_client.get(url, {"state": state_param, "code": "auth_code"})
 
     assert response.status_code == 302
     messages = list(get_messages(response.wsgi_request))
@@ -95,9 +87,7 @@ def test_callback_view_invalid_state(
 
 
 @pytest.mark.django_db
-def test_callback_view_hubspot_error(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_callback_view_hubspot_error(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
     url = reverse("plugins:hubspot:callback")
@@ -118,9 +108,7 @@ def test_callback_view_hubspot_error(
 
 @pytest.mark.django_db
 @responses.activate
-def test_callback_view_api_error(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_callback_view_api_error(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
     responses.add(
@@ -136,9 +124,7 @@ def test_callback_view_api_error(
 
     url = reverse("plugins:hubspot:callback")
     state_param = f"valid_state:{organizer.slug}:{event.slug}"
-    response = logged_in_organizer_client.get(
-        url, {"state": state_param, "code": "auth_code"}
-    )
+    response = logged_in_organizer_client.get(url, {"state": state_param, "code": "auth_code"})
 
     assert response.status_code == 302
     messages = list(get_messages(response.wsgi_request))
@@ -148,9 +134,7 @@ def test_callback_view_api_error(
 
 
 @pytest.mark.django_db
-def test_org_connect_view_redirects_to_hubspot(
-    logged_in_organizer_client, organizer, settings
-):
+def test_org_connect_view_redirects_to_hubspot(logged_in_organizer_client, organizer, settings):
     team = organizer.teams.first()
     team.can_change_organizer_settings = True
     team.save()
@@ -171,9 +155,7 @@ def test_org_connect_view_redirects_to_hubspot(
 
 @pytest.mark.django_db
 @responses.activate
-def test_callback_view_success_organizer(
-    logged_in_organizer_client, organizer, settings
-):
+def test_callback_view_success_organizer(logged_in_organizer_client, organizer, settings):
     team = organizer.teams.first()
     team.can_change_organizer_settings = True
     team.save()
@@ -198,9 +180,7 @@ def test_callback_view_success_organizer(
 
     url = reverse("plugins:hubspot:callback")
     state_param = f"valid_state:{organizer.slug}"
-    response = logged_in_organizer_client.get(
-        url, {"state": state_param, "code": "auth_code"}
-    )
+    response = logged_in_organizer_client.get(url, {"state": state_param, "code": "auth_code"})
 
     assert response.status_code == 302
     assert response.url == reverse(

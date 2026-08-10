@@ -82,9 +82,7 @@ def test_sync_skipped_when_disabled(mock_create, mock_event, object_mapping, ord
 @pytest.mark.django_db
 @mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.create_record")
-def test_sync_order_success(
-    mock_create, mock_get_props, mock_event, object_mapping, order
-):
+def test_sync_order_success(mock_create, mock_get_props, mock_event, object_mapping, order):
     mock_create.return_value = "hub_123"
     mock_get_props.return_value = [{"key": "email", "data_type": "text"}]
 
@@ -117,9 +115,7 @@ def test_sync_order_success(
 @mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.get_record")
 @mock.patch("hubspot.tasks.update_record")
-def test_sync_modes(
-    mock_update, mock_get_record, mock_get_props, mock_event, object_mapping, order
-):
+def test_sync_modes(mock_update, mock_get_record, mock_get_props, mock_event, object_mapping, order):
     mock_update.return_value = "hub_123"
     mock_get_record.return_value = {"company": "OldCompany", "phone": ""}
 
@@ -179,18 +175,14 @@ def test_sync_modes(
 
     assert "email" in properties_sent
     assert "amount" in properties_sent
-    assert (
-        "locale" not in properties_sent
-    )  # Skipped because Fill if New and record exists
+    assert "locale" not in properties_sent  # Skipped because Fill if New and record exists
 
 
 @pytest.mark.django_db
 @mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.get_record")
 @mock.patch("hubspot.tasks.update_record")
-def test_sync_fill_if_empty(
-    mock_update, mock_get_record, mock_get_props, mock_event, object_mapping, order
-):
+def test_sync_fill_if_empty(mock_update, mock_get_record, mock_get_props, mock_event, object_mapping, order):
     mock_update.return_value = "hub_123"
     mock_get_record.return_value = {"phone": "", "company": "ExistingCorp"}
 
@@ -231,9 +223,7 @@ def test_sync_fill_if_empty(
 
     InvoiceAddress.objects.create(order=order, company="NewCorp")
 
-    HubSpotFieldMapping.objects.filter(hubspot_property="company").update(
-        eventyay_field="event_name"
-    )
+    HubSpotFieldMapping.objects.filter(hubspot_property="company").update(eventyay_field="event_name")
     order.event.name = "NewEvent"
     order.event.save()
 
@@ -249,9 +239,7 @@ def test_sync_fill_if_empty(
 @mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.create_record")
 @mock.patch("hubspot.tasks.sync_order_to_hubspot.retry")
-def test_transient_error_retries(
-    mock_retry, mock_create, mock_get_props, mock_event, object_mapping, order
-):
+def test_transient_error_retries(mock_retry, mock_create, mock_get_props, mock_event, object_mapping, order):
     mock_retry.side_effect = Retry()
     mock_create.side_effect = HubSpotTransientError("Timeout", retry_after_seconds=10)
     mock_get_props.return_value = [{"key": "email", "data_type": "text"}]
@@ -280,9 +268,7 @@ def test_transient_error_retries(
 @pytest.mark.django_db
 @mock.patch("hubspot.tasks.get_hubspot_properties")
 @mock.patch("hubspot.tasks.create_record")
-def test_permanent_error_no_retry(
-    mock_create, mock_get_props, mock_event, object_mapping, order
-):
+def test_permanent_error_no_retry(mock_create, mock_get_props, mock_event, object_mapping, order):
     mock_create.side_effect = HubSpotPermanentError("Invalid data", status_code=400)
     mock_get_props.return_value = [{"key": "email", "data_type": "text"}]
 

@@ -16,9 +16,7 @@ from hubspot.models import (
 
 
 @pytest.mark.django_db
-def test_hubspot_settings_recent_activity_preview(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_settings_recent_activity_preview(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
     with scope(organizer=event.organizer):
@@ -26,9 +24,7 @@ def test_hubspot_settings_recent_activity_preview(
             AuditLog.objects.create(
                 organizer=event.organizer,
                 event=event,
-                action=(
-                    AuditAction.CONNECT if i % 2 == 0 else AuditAction.MAPPING_UPDATED
-                ),
+                action=(AuditAction.CONNECT if i % 2 == 0 else AuditAction.MAPPING_UPDATED),
                 ip_address="127.0.0.1",
             )
 
@@ -49,9 +45,7 @@ def test_hubspot_settings_recent_activity_preview(
 
 
 @pytest.mark.django_db
-def test_hubspot_logs_view_all_entries(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_logs_view_all_entries(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
     with scope(organizer=event.organizer):
@@ -95,9 +89,7 @@ def test_hubspot_logs_view_all_entries(
 
 
 @pytest.mark.django_db
-def test_hubspot_logs_view_specific_synced_object(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_logs_view_specific_synced_object(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
     with scope(organizer=event.organizer):
@@ -130,14 +122,10 @@ def test_hubspot_logs_view_specific_synced_object(
 
 
 @pytest.mark.django_db
-def test_hubspot_logs_view_other_event_entries_not_shown(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_logs_view_other_event_entries_not_shown(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
-    event2 = Event.objects.create(
-        organizer=organizer, name="Event 2", slug="event2", date_from=event.date_from
-    )
+    event2 = Event.objects.create(organizer=organizer, name="Event 2", slug="event2", date_from=event.date_from)
 
     with scope(organizer=event.organizer):
         AuditLog.objects.create(
@@ -158,9 +146,7 @@ def test_hubspot_logs_view_other_event_entries_not_shown(
 
 
 @pytest.mark.django_db
-def test_hubspot_logs_view_permission_denied(
-    logged_in_client, organizer, event, settings
-):
+def test_hubspot_logs_view_permission_denied(logged_in_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:logs",
@@ -172,9 +158,7 @@ def test_hubspot_logs_view_permission_denied(
 
 
 @pytest.mark.django_db
-def test_hubspot_logs_view_order_and_position_synced_formatting(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_logs_view_order_and_position_synced_formatting(logged_in_organizer_client, organizer, event, settings):
     from datetime import timedelta
 
     from django.utils.timezone import now
@@ -252,14 +236,14 @@ def test_hubspot_logs_view_order_and_position_synced_formatting(
     assert "Order ABCDE (buyer@example.com) synced to HubSpot successfully" in content
 
     # The position synced log text should contain position representation, order code and attendee name
-    expected_pos_message = "Order Position #1 – Standard Ticket for Order ABCDE (John Doe) synced to HubSpot successfully"
+    expected_pos_message = (
+        "Order Position #1 – Standard Ticket for Order ABCDE (John Doe) synced to HubSpot successfully"
+    )
     assert expected_pos_message in content
 
 
 @pytest.mark.django_db
-def test_hubspot_logs_view_auto_sync_actions(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_logs_view_auto_sync_actions(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
 
     with scope(organizer=event.organizer):

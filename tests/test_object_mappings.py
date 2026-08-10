@@ -22,15 +22,11 @@ def _connect_event(event):
 
 
 @pytest.mark.django_db
-def test_mappings_listed_on_settings(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_mappings_listed_on_settings(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     _connect_event(event)
     with scope(organizer=organizer):
-        ObjectTypeMapping.objects.create(
-            event=event, eventyay_object_type="order", hubspot_object_type="contacts"
-        )
+        ObjectTypeMapping.objects.create(event=event, eventyay_object_type="order", hubspot_object_type="contacts")
     url = _settings_url(organizer, event)
     response = logged_in_organizer_client.get(url)
     assert response.status_code == 200
@@ -64,9 +60,7 @@ def test_create_object_mapping(logged_in_organizer_client, organizer, event, set
 
 
 @pytest.mark.django_db
-def test_duplicate_mapping_blocked(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_duplicate_mapping_blocked(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     _connect_event(event)
     url = _settings_url(organizer, event)

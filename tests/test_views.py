@@ -30,9 +30,7 @@ def test_hubspot_settings_view_logged_out(client, organizer, event, settings):
 
 
 @pytest.mark.django_db
-def test_hubspot_settings_view_wrong_organizer(
-    logged_in_client, organizer, event, settings
-):
+def test_hubspot_settings_view_wrong_organizer(logged_in_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:hubspot",
@@ -43,9 +41,7 @@ def test_hubspot_settings_view_wrong_organizer(
 
 
 @pytest.mark.django_db
-def test_hubspot_settings_view_correct_organizer(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_settings_view_correct_organizer(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:hubspot",
@@ -56,9 +52,7 @@ def test_hubspot_settings_view_correct_organizer(
 
 
 @pytest.mark.django_db
-def test_hubspot_disconnect_view_not_connected(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_disconnect_view_not_connected(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     url = reverse(
         "plugins:hubspot:disconnect",
@@ -74,14 +68,10 @@ def test_hubspot_disconnect_view_not_connected(
 
 @pytest.mark.django_db
 @mock.patch("hubspot.views.requests.delete")
-def test_hubspot_disconnect_view_connected(
-    mock_delete, logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_disconnect_view_connected(mock_delete, logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     with scope(organizer=event.organizer):
-        HubSpotOAuthToken.objects.create(
-            event=event, access_token="old_access", refresh_token="old_refresh"
-        )
+        HubSpotOAuthToken.objects.create(event=event, access_token="old_access", refresh_token="old_refresh")
 
     mock_response = mock.Mock()
     mock_response.ok = True
@@ -120,9 +110,7 @@ def test_hubspot_disconnect_view_revoke_failure_still_clears(
 ):
     settings.SITE_URL = "https://testserver"
     with scope(organizer=event.organizer):
-        HubSpotOAuthToken.objects.create(
-            event=event, access_token="old_access", refresh_token="old_refresh"
-        )
+        HubSpotOAuthToken.objects.create(event=event, access_token="old_access", refresh_token="old_refresh")
 
     # Simulate a network error or 500 from HubSpot
 
@@ -142,18 +130,14 @@ def test_hubspot_disconnect_view_revoke_failure_still_clears(
 
 
 @pytest.mark.django_db
-def test_hubspot_settings_save_auto_sync_audit_log(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_hubspot_settings_save_auto_sync_audit_log(logged_in_organizer_client, organizer, event, settings):
     from hubspot.models import AuditAction, AuditLog, HubSpotEventSettings
 
     settings.SITE_URL = "https://testserver"
 
     # Get settings or create
     with scope(organizer=event.organizer):
-        HubSpotEventSettings.objects.get_or_create(
-            event=event, defaults={"auto_sync_enabled": True}
-        )
+        HubSpotEventSettings.objects.get_or_create(event=event, defaults={"auto_sync_enabled": True})
 
     url = reverse(
         "plugins:hubspot:hubspot",
@@ -172,9 +156,7 @@ def test_hubspot_settings_save_auto_sync_audit_log(
     assert response.status_code == 302
 
     with scope(organizer=event.organizer):
-        assert AuditLog.objects.filter(
-            event=event, action=AuditAction.AUTO_SYNC_DISABLED
-        ).exists()
+        assert AuditLog.objects.filter(event=event, action=AuditAction.AUTO_SYNC_DISABLED).exists()
 
     # Enable auto_sync again
     response = logged_in_organizer_client.post(
@@ -187,9 +169,7 @@ def test_hubspot_settings_save_auto_sync_audit_log(
     assert response.status_code == 302
 
     with scope(organizer=event.organizer):
-        assert AuditLog.objects.filter(
-            event=event, action=AuditAction.AUTO_SYNC_ENABLED
-        ).exists()
+        assert AuditLog.objects.filter(event=event, action=AuditAction.AUTO_SYNC_ENABLED).exists()
 
 
 @pytest.mark.django_db
@@ -234,9 +214,7 @@ def test_organizer_settings_view_lists_only_organizer_events(
 
 
 @pytest.mark.django_db
-def test_organizer_settings_view_connection_and_mapping_status(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_organizer_settings_view_connection_and_mapping_status(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     with scope(organizer=organizer):
         # Setup event with custom token and custom mapping
@@ -290,9 +268,7 @@ def test_organizer_settings_view_connection_and_mapping_status(
 
     # Now disable sync for event2 specifically
     with scope(organizer=organizer):
-        HubSpotEventSettings.objects.update_or_create(
-            event=event2, defaults={"sync_enabled": False}
-        )
+        HubSpotEventSettings.objects.update_or_create(event=event2, defaults={"sync_enabled": False})
 
     response = logged_in_organizer_client.get(url)
     assert response.status_code == 200
@@ -303,9 +279,7 @@ def test_organizer_settings_view_connection_and_mapping_status(
 
 
 @pytest.mark.django_db
-def test_organizer_settings_view_single_save_action(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_organizer_settings_view_single_save_action(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     with scope(organizer=organizer):
         event2 = Event.objects.create(
@@ -339,9 +313,7 @@ def test_organizer_settings_view_single_save_action(
 
 
 @pytest.mark.django_db
-def test_event_hubspot_settings_view_organizer_fallback(
-    logged_in_organizer_client, organizer, event, settings
-):
+def test_event_hubspot_settings_view_organizer_fallback(logged_in_organizer_client, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     with scope(organizer=organizer):
         OrganizerHubSpotOAuthToken.objects.create(
@@ -366,9 +338,7 @@ def test_event_hubspot_settings_view_organizer_fallback(
 
     # Now disable sync specifically for this event
     with scope(organizer=organizer):
-        HubSpotEventSettings.objects.update_or_create(
-            event=event, defaults={"sync_enabled": False}
-        )
+        HubSpotEventSettings.objects.update_or_create(event=event, defaults={"sync_enabled": False})
 
     response = logged_in_organizer_client.get(url)
     assert response.status_code == 200
@@ -376,9 +346,7 @@ def test_event_hubspot_settings_view_organizer_fallback(
 
 
 @pytest.mark.django_db
-def test_organizer_settings_view_your_events_panel_visibility(
-    logged_in_organizer_client, organizer, settings
-):
+def test_organizer_settings_view_your_events_panel_visibility(logged_in_organizer_client, organizer, settings):
     settings.SITE_URL = "https://testserver"
     url = reverse("plugins:hubspot:org_hubspot", kwargs={"organizer": organizer.slug})
 
@@ -389,9 +357,7 @@ def test_organizer_settings_view_your_events_panel_visibility(
 
     # When main toggle is enabled, Your Events panel should be visible in HTML
     with scope(organizer=organizer):
-        OrganizerHubSpotSettings.objects.update_or_create(
-            organizer=organizer, defaults={"sync_enabled": True}
-        )
+        OrganizerHubSpotSettings.objects.update_or_create(organizer=organizer, defaults={"sync_enabled": True})
 
     response = logged_in_organizer_client.get(url)
     assert response.status_code == 200
