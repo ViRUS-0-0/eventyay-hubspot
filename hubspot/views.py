@@ -1377,7 +1377,7 @@ class OrganizerHubSpotSettingsView(
                 event.connection_badge_class = "info"
             else:
                 event.connection_status_text = _("Not connected")
-                event.connection_badge_class = "muted"
+                event.connection_badge_class = "default"
 
             # Mapping status
             has_custom_fields = event.id in custom_field_mappings_set
