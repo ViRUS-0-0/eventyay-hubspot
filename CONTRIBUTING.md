@@ -7,6 +7,7 @@ We welcome contributions to the Eventyay Hubspot plugin! This plugin integrates 
 If you need help or want to discuss a feature before building it:
 - Check the [Eventyay Documentation](https://docs.eventyay.com) for core platform concepts.
 - Review existing GitHub Issues or open a new one to ask questions.
+- Read the [FOSSASIA Open Source Developer Guide and Best Practices](https://blog.fossasia.org/open-source-developer-guide-and-best-practices-at-fossasia/).
 
 ## Repository Layout
 
