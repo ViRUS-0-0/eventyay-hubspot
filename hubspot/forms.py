@@ -1,16 +1,16 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from eventyay.base.forms.widgets import DatePickerWidget
 from eventyay.base.models import Event, Organizer
 from eventyay.control.forms.filter import FilterForm
-from eventyay.base.forms.widgets import DatePickerWidget
 
 from .models import (
     HubSpotEventSettings,
-    ObjectTypeMapping,
     HubSpotFieldMapping,
-    SyncMode,
-    OrganizerDefaultObjectTypeMapping,
+    ObjectTypeMapping,
     OrganizerDefaultFieldMapping,
+    OrganizerDefaultObjectTypeMapping,
+    SyncMode,
 )
 
 
@@ -59,9 +59,7 @@ class HubSpotLogFilterForm(FilterForm):
     )
     query = forms.CharField(
         label=_("Search for..."),
-        widget=forms.TextInput(
-            attrs={"placeholder": _("Search for..."), "autofocus": "autofocus"}
-        ),
+        widget=forms.TextInput(attrs={"placeholder": _("Search for..."), "autofocus": "autofocus"}),
         required=False,
     )
     date_from = forms.DateField(
@@ -112,10 +110,7 @@ class BaseObjectTypeMappingFormSet(forms.BaseInlineFormSet):
                 continue
             if pair in seen:
                 raise forms.ValidationError(
-                    _(
-                        "Duplicate mapping: each eventyay / HubSpot object-type "
-                        "pair may only appear once per event."
-                    )
+                    _("Duplicate mapping: each eventyay / HubSpot object-type pair may only appear once per event.")
                 )
             seen.add(pair)
         super().clean()
@@ -145,23 +140,13 @@ class HubSpotFieldMappingForm(forms.ModelForm):
 
             if ey_type and hs_type:
                 if ey_type == "yes/no" and hs_type != "yes/no":
-                    warnings.append(
-                        _(
-                            "Warning: Possible type mismatch. Mapping a yes/no field to a different type."
-                        )
-                    )
+                    warnings.append(_("Warning: Possible type mismatch. Mapping a yes/no field to a different type."))
                 elif ey_type != "yes/no" and hs_type == "yes/no":
                     warnings.append(
-                        _(
-                            "Warning: Possible type mismatch. Mapping a non-boolean field to a yes/no field."
-                        )
+                        _("Warning: Possible type mismatch. Mapping a non-boolean field to a yes/no field.")
                     )
                 elif ey_type == "number" and hs_type not in ("number", "text"):
-                    warnings.append(
-                        _(
-                            "Warning: Possible type mismatch. Mapping a number field to a different type."
-                        )
-                    )
+                    warnings.append(_("Warning: Possible type mismatch. Mapping a number field to a different type."))
         return warnings
 
     def _build_choices(self, fields_list):
@@ -203,9 +188,7 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         self.warnings = []
 
         self.ey_types = {f["key"]: f.get("data_type", "text") for f in eventyay_fields}
-        self.hs_types = {
-            f["key"]: f.get("data_type", "text") for f in hubspot_properties
-        }
+        self.hs_types = {f["key"]: f.get("data_type", "text") for f in hubspot_properties}
 
         ey_choices = self._build_choices(eventyay_fields)
 
@@ -252,11 +235,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
         super().add_fields(form, index)
 
         is_identifier = False
-        if (
-            form.instance
-            and form.instance.pk
-            and form.instance.sync_mode == SyncMode.IDENTIFIER
-        ):
+        if form.instance and form.instance.pk and form.instance.sync_mode == SyncMode.IDENTIFIER:
             is_identifier = True
         elif index == 0 and not self.initial_form_count():
             # Auto-mark slot 0 as the identifier only when there are no saved
@@ -264,21 +243,13 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             is_identifier = True
 
         if is_identifier:
-            form.fields["sync_mode"].widget.choices = [
-                (SyncMode.IDENTIFIER, _("Identifier"))
-            ]
+            form.fields["sync_mode"].widget.choices = [(SyncMode.IDENTIFIER, _("Identifier"))]
             form.fields["sync_mode"].widget.attrs["readonly"] = True
-            form.fields["sync_mode"].widget.attrs[
-                "style"
-            ] = "pointer-events: none; background-color: #eee;"
+            form.fields["sync_mode"].widget.attrs["style"] = "pointer-events: none; background-color: #eee;"
             if not form.initial.get("sync_mode"):
                 form.initial["sync_mode"] = SyncMode.IDENTIFIER
         else:
-            choices = [
-                c
-                for c in form.fields["sync_mode"].choices
-                if c[0] != SyncMode.IDENTIFIER
-            ]
+            choices = [c for c in form.fields["sync_mode"].choices if c[0] != SyncMode.IDENTIFIER]
             form.fields["sync_mode"].widget.choices = choices
             if form.initial.get("sync_mode") == SyncMode.IDENTIFIER:
                 form.initial["sync_mode"] = SyncMode.OVERWRITE
@@ -305,9 +276,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             if eventyay_field:
                 if eventyay_field in seen_fields:
                     raise forms.ValidationError(
-                        _(
-                            "You cannot map the same eventyay field ('%(field)s') multiple times."
-                        ),
+                        _("You cannot map the same eventyay field ('%(field)s') multiple times."),
                         params={"field": eventyay_field},
                         code="duplicate_field",
                     )
@@ -317,9 +286,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             if hubspot_property:
                 if hubspot_property in seen_properties:
                     raise forms.ValidationError(
-                        _(
-                            "You cannot map multiple fields to the same HubSpot property ('%(prop)s')."
-                        ),
+                        _("You cannot map multiple fields to the same HubSpot property ('%(prop)s')."),
                         params={"prop": hubspot_property},
                         code="duplicate_property",
                     )
@@ -332,9 +299,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
             )
         elif identifier_count > 1:
             raise forms.ValidationError(
-                _(
-                    "Only one row can be set as 'Identifier'. You have selected %(count)d."
-                ),
+                _("Only one row can be set as 'Identifier'. You have selected %(count)d."),
                 params={"count": identifier_count},
                 code="multiple_identifiers",
             )

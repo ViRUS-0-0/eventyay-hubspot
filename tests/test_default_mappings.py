@@ -2,14 +2,14 @@ import pytest
 from django_scopes import scope
 
 from hubspot.models import (
-    OrganizerDefaultObjectTypeMapping,
-    OrganizerDefaultFieldMapping,
     HubSpotEventSettings,
     HubSpotFieldMapping,
-    ObjectTypeMapping,
-    SyncMode,
     HubSpotOAuthToken,
+    ObjectTypeMapping,
+    OrganizerDefaultFieldMapping,
+    OrganizerDefaultObjectTypeMapping,
     OrganizerHubSpotOAuthToken,
+    SyncMode,
 )
 from hubspot.services import (
     apply_default_mappings_to_all_events,
@@ -26,9 +26,7 @@ def _connect_event(event):
 
 
 def _connect_organizer(organizer):
-    token = OrganizerHubSpotOAuthToken(
-        organizer=organizer, hub_id="123", hub_name="test-hub"
-    )
+    token = OrganizerHubSpotOAuthToken(organizer=organizer, hub_id="123", hub_name="test-hub")
     token.access_token = "acc"
     token.refresh_token = "ref"
     token.save()
@@ -67,9 +65,7 @@ def test_apply_defaults_no_existing_mappings(organizer, event, org_default_mappi
         assert otm.eventyay_object_type == "order"
         assert otm.hubspot_object_type == "contacts"
 
-        fields = HubSpotFieldMapping.objects.filter(event=event).order_by(
-            "eventyay_field"
-        )
+        fields = HubSpotFieldMapping.objects.filter(event=event).order_by("eventyay_field")
         assert fields.count() == 2
         assert fields[0].eventyay_field == "email"
         assert fields[0].source == "organizer_default"
@@ -86,9 +82,7 @@ def test_apply_defaults_same_field_conflict(organizer, event, org_default_mappin
 
     with scope(organizer=organizer):
         # Event already maps "email" to something else
-        ObjectTypeMapping.objects.create(
-            event=event, eventyay_object_type="order", hubspot_object_type="contacts"
-        )
+        ObjectTypeMapping.objects.create(event=event, eventyay_object_type="order", hubspot_object_type="contacts")
         from django.contrib.contenttypes.models import ContentType
         from eventyay.base.models import Order
 
@@ -105,9 +99,7 @@ def test_apply_defaults_same_field_conflict(organizer, event, org_default_mappin
     apply_default_mappings_to_all_events(organizer)
 
     with scope(organizer=organizer):
-        fields = HubSpotFieldMapping.objects.filter(event=event).order_by(
-            "eventyay_field"
-        )
+        fields = HubSpotFieldMapping.objects.filter(event=event).order_by("eventyay_field")
         assert fields.count() == 3
 
         email_field = fields.get(eventyay_field="email", source="custom")
@@ -171,9 +163,7 @@ def test_conflict_auto_clears_on_delete(organizer, event, org_default_mapping):
 
 
 @pytest.mark.django_db
-def test_no_conflict_for_custom_on_different_fields(
-    organizer, event, org_default_mapping
-):
+def test_no_conflict_for_custom_on_different_fields(organizer, event, org_default_mapping):
     """Custom mappings on different fields than the defaults should not conflict."""
     _connect_event(event)
 
@@ -184,9 +174,7 @@ def test_no_conflict_for_custom_on_different_fields(
         content_type = ContentType.objects.get_for_model(Order)
 
         # User has a custom mapping on 'phone' -- not overlapping with defaults.
-        ObjectTypeMapping.objects.create(
-            event=event, eventyay_object_type="order", hubspot_object_type="contacts"
-        )
+        ObjectTypeMapping.objects.create(event=event, eventyay_object_type="order", hubspot_object_type="contacts")
         HubSpotFieldMapping.objects.create(
             event=event,
             content_type=content_type,

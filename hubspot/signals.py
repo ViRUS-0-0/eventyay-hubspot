@@ -1,32 +1,37 @@
+from datetime import timedelta
+
+from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
+from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.template.loader import get_template
 from django.urls import resolve, reverse
+from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
-from django.contrib.contenttypes.models import ContentType
-from django.core.cache import cache
-from eventyay.base.models import Order, OrderPosition
-from eventyay.base.signals import periodic_task
-from django.db import transaction
-from eventyay.control.signals import nav_event, nav_organizer
-from eventyay.control.signals import order_info
 from django_scopes import scope
-from eventyay.base.signals import order_placed, order_paid, order_canceled
-from .tasks import sync_order_to_hubspot
+from eventyay.base.models import Order, OrderPosition
+from eventyay.base.signals import (
+    order_canceled,
+    order_paid,
+    order_placed,
+    periodic_task,
+)
+from eventyay.control.signals import nav_event, nav_organizer, order_info
+
 from .models import (
-    HubSpotEventSettings,
-    ObjectTypeMapping,
-    HubSpotFieldMapping,
-    HubSpotObjectMapping,
-    HubSpotOAuthToken,
     AuditLog,
-    SyncLog,
+    HubSpotEventSettings,
+    HubSpotFieldMapping,
+    HubSpotOAuthToken,
+    HubSpotObjectMapping,
+    ObjectTypeMapping,
     SyncAction,
     SyncDirection,
+    SyncLog,
     SyncStatus,
 )
-from django.utils.timezone import now
-from datetime import timedelta
+from .tasks import sync_order_to_hubspot
 
 
 @receiver(nav_event, dispatch_uid="hubspot_nav")
@@ -77,8 +82,8 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
     with scope(organizer=order.event.organizer):
         from .services import (
             get_valid_hubspot_token,
-            is_sync_enabled,
             is_auto_sync_enabled,
+            is_sync_enabled,
         )
 
         if not is_sync_enabled(order.event):
@@ -110,9 +115,7 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
         # Deduplicate multiple signals for the same order within a short window
         cache_key = f"hubspot_sync_enqueued_{order.id}"
         if cache.add(cache_key, "1", timeout=5):
-            sync_order_to_hubspot.apply_async(
-                args=[order.id, order.event.id], countdown=5
-            )
+            sync_order_to_hubspot.apply_async(args=[order.id, order.event.id], countdown=5)
 
     transaction.on_commit(enqueue_task)
 
@@ -175,9 +178,7 @@ def clear_audit_logs(sender, **kwargs):
 
 @receiver(order_info, dispatch_uid="hubspot_control_order_info")
 def control_order_info(sender, request, order, **kwargs):
-    if not request.user.has_event_permission(
-        request.organizer, request.event, "can_view_orders", request
-    ):
+    if not request.user.has_event_permission(request.organizer, request.event, "can_view_orders", request):
         return ""
 
     is_connected = False
@@ -212,11 +213,7 @@ def control_order_info(sender, request, order, **kwargs):
 
     if mappings:
         mapping_ids = [m.id for m in mappings]
-        latest_log = (
-            SyncLog.objects.filter(object_mapping_id__in=mapping_ids)
-            .order_by("-created_at")
-            .first()
-        )
+        latest_log = SyncLog.objects.filter(object_mapping_id__in=mapping_ids).order_by("-created_at").first()
         last_synced_at = max(
             (m.last_synced_at for m in mappings if m.last_synced_at is not None),
             default=None,
@@ -268,9 +265,7 @@ def control_order_info(sender, request, order, **kwargs):
             if not has_mapping_changes:
                 sync_needed = False
 
-    can_sync = request.user.has_event_permission(
-        request.organizer, request.event, "can_change_event_settings", request
-    )
+    can_sync = request.user.has_event_permission(request.organizer, request.event, "can_change_event_settings", request)
 
     template = get_template("hubspot/control_order_info.html")
     ctx = {

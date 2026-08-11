@@ -1,31 +1,32 @@
 import datetime
-import os
 import logging
+import os
+
 import requests
+from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 from django.db import transaction
 from django.utils.timezone import now
 from django_scopes import scope
+from eventyay.base.models import Order, OrderPosition
 
 from .models import (
     AuditAction,
     AuditLog,
+    EventyayObjectType,
     HubSpotEventSettings,
+    HubSpotFieldMapping,
     HubSpotOAuthToken,
+    ObjectTypeMapping,
+    OrganizerDefaultObjectTypeMapping,
     OrganizerHubSpotOAuthToken,
     OrganizerHubSpotSettings,
     SyncAction,
     SyncDirection,
     SyncLog,
-    SyncStatus,
     SyncMode,
-    ObjectTypeMapping,
-    HubSpotFieldMapping,
-    OrganizerDefaultObjectTypeMapping,
-    EventyayObjectType,
+    SyncStatus,
 )
-from django.core.cache import cache
-from django.contrib.contenttypes.models import ContentType
-from eventyay.base.models import Order, OrderPosition
 
 
 class HubSpotFetchError(Exception):
@@ -34,9 +35,7 @@ class HubSpotFetchError(Exception):
     pass
 
 
-def get_hubspot_properties(
-    event, object_type: str, force_sync: bool = False, organizer=None
-) -> list[dict]:
+def get_hubspot_properties(event, object_type: str, force_sync: bool = False, organizer=None) -> list[dict]:
     """
     Returns synced HubSpot properties from the cache.
     If no complete sync exists, fetches synchronously.
@@ -63,9 +62,7 @@ def get_hubspot_properties(
     is_stale = False
     if cached_data:
         fetched_at = cached_data.get("fetched_at")
-        if not fetched_at or fetched_at < now() - datetime.timedelta(
-            minutes=ttl_minutes
-        ):
+        if not fetched_at or fetched_at < now() - datetime.timedelta(minutes=ttl_minutes):
             is_stale = True
 
     if not cached_data:
@@ -116,9 +113,7 @@ def sync_hubspot_properties(event, object_type: str, organizer=None) -> list[dic
         token = get_valid_organizer_hubspot_token(organizer)
         prefix = f"org_{organizer.id}"
     else:
-        token = get_valid_hubspot_token(
-            event, allow_conflict=True, require_sync_enabled=False
-        )
+        token = get_valid_hubspot_token(event, allow_conflict=True, require_sync_enabled=False)
         prefix = f"evt_{event.id}"
 
     if not token:
@@ -137,9 +132,7 @@ def sync_hubspot_properties(event, object_type: str, organizer=None) -> list[dic
             params["after"] = cursor
 
         try:
-            response = requests.get(
-                base_url, headers=headers, params=params, timeout=15
-            )
+            response = requests.get(base_url, headers=headers, params=params, timeout=15)
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After")
                 e = HubSpotFetchError("Rate limited by HubSpot")
@@ -286,22 +279,15 @@ def get_valid_organizer_hubspot_token(organizer) -> str | None:
     """
     with transaction.atomic():
         try:
-            org_token = OrganizerHubSpotOAuthToken.objects.select_for_update().get(
-                organizer=organizer
-            )
-            if (
-                org_token.expires_at
-                and org_token.expires_at > now() + datetime.timedelta(minutes=5)
-            ):
+            org_token = OrganizerHubSpotOAuthToken.objects.select_for_update().get(organizer=organizer)
+            if org_token.expires_at and org_token.expires_at > now() + datetime.timedelta(minutes=5):
                 return org_token.access_token
             return _refresh_token_record(org_token, organizer, is_organizer=True)
         except OrganizerHubSpotOAuthToken.DoesNotExist:
             return None
 
 
-def get_valid_hubspot_token(
-    event, allow_conflict=False, require_sync_enabled=True
-) -> str | None:
+def get_valid_hubspot_token(event, allow_conflict=False, require_sync_enabled=True) -> str | None:
     """
     Returns a valid HubSpot access token for the given event.
     If sync is disabled for the event, returns None.
@@ -321,10 +307,7 @@ def get_valid_hubspot_token(
         # 1. Try event token
         try:
             event_token = HubSpotOAuthToken.objects.select_for_update().get(event=event)
-            if (
-                event_token.expires_at
-                and event_token.expires_at > now() + datetime.timedelta(minutes=5)
-            ):
+            if event_token.expires_at and event_token.expires_at > now() + datetime.timedelta(minutes=5):
                 return event_token.access_token
             return _refresh_token_record(event_token, event, is_organizer=False)
         except HubSpotOAuthToken.DoesNotExist:
@@ -333,9 +316,7 @@ def get_valid_hubspot_token(
         # 2. Check Organizer settings
         if require_sync_enabled:
             try:
-                org_settings = OrganizerHubSpotSettings.objects.get(
-                    organizer=event.organizer
-                )
+                org_settings = OrganizerHubSpotSettings.objects.get(organizer=event.organizer)
                 if not org_settings.sync_enabled:
                     return None
             except OrganizerHubSpotSettings.DoesNotExist:
@@ -343,13 +324,8 @@ def get_valid_hubspot_token(
 
         # 3. Try Organizer token
         try:
-            org_token = OrganizerHubSpotOAuthToken.objects.select_for_update().get(
-                organizer=event.organizer
-            )
-            if (
-                org_token.expires_at
-                and org_token.expires_at > now() + datetime.timedelta(minutes=5)
-            ):
+            org_token = OrganizerHubSpotOAuthToken.objects.select_for_update().get(organizer=event.organizer)
+            if org_token.expires_at and org_token.expires_at > now() + datetime.timedelta(minutes=5):
                 return org_token.access_token
             return _refresh_token_record(org_token, event.organizer, is_organizer=True)
         except OrganizerHubSpotOAuthToken.DoesNotExist:
@@ -372,13 +348,9 @@ def is_sync_enabled(event) -> bool:
         if HubSpotOAuthToken.objects.filter(event=event).exists():
             return True
 
-        org_settings = OrganizerHubSpotSettings.objects.filter(
-            organizer=event.organizer
-        ).first()
+        org_settings = OrganizerHubSpotSettings.objects.filter(organizer=event.organizer).first()
         if org_settings is not None and org_settings.sync_enabled:
-            if OrganizerHubSpotOAuthToken.objects.filter(
-                organizer=event.organizer
-            ).exists():
+            if OrganizerHubSpotOAuthToken.objects.filter(organizer=event.organizer).exists():
                 return True
 
         return False
@@ -405,17 +377,13 @@ def apply_default_mappings_to_all_events(organizer):
     with scope(organizer=organizer):
         events = list(organizer.events.all())
         default_obj_mappings = list(
-            OrganizerDefaultObjectTypeMapping.objects.filter(
-                organizer=organizer
-            ).prefetch_related("field_mappings")
+            OrganizerDefaultObjectTypeMapping.objects.filter(organizer=organizer).prefetch_related("field_mappings")
         )
 
         order_ct = ContentType.objects.get_for_model(Order)
         order_position_ct = ContentType.objects.get_for_model(OrderPosition)
 
-        existing_settings = {
-            s.event_id: s for s in HubSpotEventSettings.objects.filter(event__in=events)
-        }
+        existing_settings = {s.event_id: s for s in HubSpotEventSettings.objects.filter(event__in=events)}
 
         settings_to_create = []
         for event in events:
@@ -423,10 +391,7 @@ def apply_default_mappings_to_all_events(organizer):
                 settings_to_create.append(HubSpotEventSettings(event=event))
         if settings_to_create:
             HubSpotEventSettings.objects.bulk_create(settings_to_create)
-            existing_settings = {
-                s.event_id: s
-                for s in HubSpotEventSettings.objects.filter(event__in=events)
-            }
+            existing_settings = {s.event_id: s for s in HubSpotEventSettings.objects.filter(event__in=events)}
 
         object_type_mappings_to_create = []
         for event in events:
@@ -447,9 +412,7 @@ def apply_default_mappings_to_all_events(organizer):
                 update_fields=["position"],
             )
 
-        custom_mappings = HubSpotFieldMapping.objects.filter(event__in=events).exclude(
-            source="organizer_default"
-        )
+        custom_mappings = HubSpotFieldMapping.objects.filter(event__in=events).exclude(source="organizer_default")
 
         custom_mappings_by_event = defaultdict(list)
         for cm in custom_mappings:
@@ -466,10 +429,7 @@ def apply_default_mappings_to_all_events(organizer):
             for default_obj in default_obj_mappings:
                 if default_obj.eventyay_object_type == EventyayObjectType.ORDER:
                     content_type = order_ct
-                elif (
-                    default_obj.eventyay_object_type
-                    == EventyayObjectType.ORDER_POSITION
-                ):
+                elif default_obj.eventyay_object_type == EventyayObjectType.ORDER_POSITION:
                     content_type = order_position_ct
                 else:
                     continue
@@ -498,17 +458,12 @@ def apply_default_mappings_to_all_events(organizer):
                                 cm
                                 for cm in event_custom_mappings
                                 if cm.content_type_id == content_type.id
-                                and cm.hubspot_object_type
-                                == default_obj.hubspot_object_type
+                                and cm.hubspot_object_type == default_obj.hubspot_object_type
                                 and cm.sync_mode == SyncMode.IDENTIFIER
                             ),
                             None,
                         )
-                        if (
-                            existing_identifier
-                            and existing_identifier.eventyay_field
-                            != default_field.eventyay_field
-                        ):
+                        if existing_identifier and existing_identifier.eventyay_field != default_field.eventyay_field:
                             conflict_found = True
 
                     field_mappings_to_create.append(
@@ -543,9 +498,7 @@ def apply_default_mappings_to_all_events(organizer):
             )
 
         if settings_to_update:
-            HubSpotEventSettings.objects.bulk_update(
-                settings_to_update, ["has_mapping_conflict"]
-            )
+            HubSpotEventSettings.objects.bulk_update(settings_to_update, ["has_mapping_conflict"])
 
 
 def check_and_clear_mapping_conflict(event):

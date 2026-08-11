@@ -1,7 +1,7 @@
 import pytest
+from django_scopes import scope
 from eventyay.base.models import Question
 
-from django_scopes import scope
 from hubspot.field_discovery import get_available_fields
 
 

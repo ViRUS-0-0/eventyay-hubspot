@@ -1,19 +1,17 @@
 import base64
 import hashlib
+from datetime import datetime, time
 from functools import lru_cache
 
 from cryptography.fernet import Fernet
 from django.conf import settings
-from django.utils.translation import gettext_lazy as _
 from django.utils.timezone import make_aware
-from datetime import datetime, time
+from django.utils.translation import gettext_lazy as _
 
 
 @lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
-    key = base64.urlsafe_b64encode(
-        hashlib.sha256(settings.SECRET_KEY.encode()).digest()
-    )
+    key = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode()).digest())
     return Fernet(key)
 
 
@@ -139,31 +137,21 @@ class ActivityLogSequence:
                 content_type_name = log.object_mapping.content_type.name.title()
                 model_name = log.object_mapping.content_type.model
                 if model_name == "orderposition" and hasattr(obj, "order"):
-                    attendee_info = getattr(
-                        obj, "attendee_name_cached", None
-                    ) or getattr(obj, "attendee_email", None)
+                    attendee_info = getattr(obj, "attendee_name_cached", None) or getattr(obj, "attendee_email", None)
                     if not attendee_info and hasattr(obj.order, "email"):
                         attendee_info = obj.order.email
-                    order_info = (
-                        f" for Order {obj.order.code}"
-                        if hasattr(obj.order, "code")
-                        else ""
-                    )
+                    order_info = f" for Order {obj.order.code}" if hasattr(obj.order, "code") else ""
                     info_str = f" ({attendee_info})" if attendee_info else ""
                     obj_name = f"{content_type_name} {obj}{order_info}{info_str}"
                 elif model_name == "order" and hasattr(obj, "code"):
-                    email_str = (
-                        f" ({obj.email})" if hasattr(obj, "email") and obj.email else ""
-                    )
+                    email_str = f" ({obj.email})" if hasattr(obj, "email") and obj.email else ""
                     obj_name = f"{content_type_name} {obj.code}{email_str}"
                 else:
                     obj_name = f"{content_type_name} {obj}"
             elif log.object_mapping.content_type:
                 obj_name = log.object_mapping.content_type.name.title()
 
-        message_template = self.SYNC_STATUS_MESSAGES.get(
-            log.status, _("%(obj_name)s sync is pending")
-        )
+        message_template = self.SYNC_STATUS_MESSAGES.get(log.status, _("%(obj_name)s sync is pending"))
         text = message_template % {"obj_name": obj_name}
 
         if self.search_query and self.search_query.lower() not in str(text).lower():
@@ -226,9 +214,7 @@ class ActivityLogSequence:
         self._len = len(combined)
 
 
-def get_hubspot_activity_logs(
-    event, filter_type=None, date_from=None, date_to=None, search_query=None
-):
+def get_hubspot_activity_logs(event, filter_type=None, date_from=None, date_to=None, search_query=None):
     from .models import AuditLog, SyncLog
 
     connection_actions = [
@@ -239,9 +225,7 @@ def get_hubspot_activity_logs(
     ]
 
     if filter_type in [None, "settings"]:
-        audit_logs = AuditLog.objects.filter(event=event).exclude(
-            action__in=connection_actions
-        )
+        audit_logs = AuditLog.objects.filter(event=event).exclude(action__in=connection_actions)
         if date_from:
             dt_from = make_aware(datetime.combine(date_from, time.min))
             audit_logs = audit_logs.filter(created_at__gte=dt_from)
@@ -252,9 +236,7 @@ def get_hubspot_activity_logs(
         audit_logs = AuditLog.objects.none()
 
     if filter_type in [None, "sync"]:
-        sync_logs = SyncLog.objects.filter(event=event).select_related(
-            "object_mapping__content_type"
-        )
+        sync_logs = SyncLog.objects.filter(event=event).select_related("object_mapping__content_type")
         if date_from:
             dt_from = make_aware(datetime.combine(date_from, time.min))
             sync_logs = sync_logs.filter(created_at__gte=dt_from)

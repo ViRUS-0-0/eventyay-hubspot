@@ -21,9 +21,7 @@ def get_active_mappings_with_fields(event):
     position_ct = ContentType.objects.get_for_model(OrderPosition)
 
     for mapping in active_mappings:
-        content_type = (
-            order_ct if mapping.eventyay_object_type == "order" else position_ct
-        )
+        content_type = order_ct if mapping.eventyay_object_type == "order" else position_ct
         has_valid_fields = (
             HubSpotFieldMapping.objects.filter(
                 event=event,
@@ -55,15 +53,11 @@ def get_unsynced_querysets(event):
         )
 
         if mapping.eventyay_object_type == "order":
-            qs = Order.objects.filter(event=event, status=Order.STATUS_PAID).exclude(
-                id__in=synced_ids
-            )
+            qs = Order.objects.filter(event=event, status=Order.STATUS_PAID).exclude(id__in=synced_ids)
             results.append((mapping, content_type, qs))
         elif mapping.eventyay_object_type == "order_position":
             qs = (
-                OrderPosition.objects.filter(
-                    order__event=event, order__status=Order.STATUS_PAID
-                )
+                OrderPosition.objects.filter(order__event=event, order__status=Order.STATUS_PAID)
                 .select_related("order")
                 .exclude(id__in=synced_ids)
             )
