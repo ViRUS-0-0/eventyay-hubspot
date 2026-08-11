@@ -1,10 +1,12 @@
 import datetime
-from django.utils.timezone import now
-import pytest
 from unittest import mock
+
+import pytest
+from django.utils.timezone import now
+from django_scopes import scopes_disabled
+
 from hubspot.models import HubSpotEventSettings
 from hubspot.signals import _enqueue_hubspot_sync
-from django_scopes import scopes_disabled
 
 
 @pytest.fixture(autouse=True)
@@ -32,9 +34,7 @@ def test_enqueue_sync_skipped_if_disabled(mock_apply, event, order):
 
 @pytest.mark.django_db
 @mock.patch("hubspot.signals.sync_order_to_hubspot.apply_async")
-def test_enqueue_sync_success(
-    mock_apply, event, order, django_capture_on_commit_callbacks
-):
+def test_enqueue_sync_success(mock_apply, event, order, django_capture_on_commit_callbacks):
     HubSpotEventSettings.objects.create(event=event, sync_enabled=True)
     from hubspot.models import HubSpotOAuthToken
 
@@ -52,14 +52,10 @@ def test_enqueue_sync_success(
 
 @pytest.mark.django_db
 @mock.patch("hubspot.signals.sync_order_to_hubspot.apply_async")
-def test_enqueue_sync_auto_sync_disabled(
-    mock_apply, event, order, django_capture_on_commit_callbacks
-):
+def test_enqueue_sync_auto_sync_disabled(mock_apply, event, order, django_capture_on_commit_callbacks):
     from hubspot.models import SyncLog, SyncStatus
 
-    HubSpotEventSettings.objects.create(
-        event=event, sync_enabled=True, auto_sync_enabled=False
-    )
+    HubSpotEventSettings.objects.create(event=event, sync_enabled=True, auto_sync_enabled=False)
     from hubspot.models import HubSpotOAuthToken
 
     HubSpotOAuthToken.objects.create(

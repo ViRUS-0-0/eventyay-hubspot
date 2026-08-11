@@ -1,31 +1,24 @@
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from celery import shared_task
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 from django.db import transaction
+from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
-from django.conf import settings
-from django.urls import reverse
-from django.core.cache import cache
-
 from eventyay.base.models import Event, Order, OrderPosition
 
 from .client import (
-    HubSpotTransientError,
+    HubSpotConflictError,
     HubSpotPermanentError,
     HubSpotRecordNotFoundError,
-    HubSpotConflictError,
+    HubSpotTransientError,
     create_record,
-    update_record,
     get_record,
-)
-from .services import (
-    get_valid_hubspot_token,
-    get_hubspot_properties,
-    sync_hubspot_properties,
-    HubSpotFetchError,
+    update_record,
 )
 from .models import (
     HubSpotFieldMapping,
@@ -36,6 +29,12 @@ from .models import (
     SyncLog,
     SyncMode,
     SyncStatus,
+)
+from .services import (
+    HubSpotFetchError,
+    get_hubspot_properties,
+    get_valid_hubspot_token,
+    sync_hubspot_properties,
 )
 
 
@@ -61,11 +60,7 @@ def _resolve_eventyay_field(obj: Any, key: str) -> Any:
     """Helper to extract a specific field from Order or OrderPosition based on field_discovery keys"""
     # Event fields
     if key.startswith("event_"):
-        event = (
-            obj.event
-            if hasattr(obj, "event")
-            else (obj.order.event if hasattr(obj, "order") else None)
-        )
+        event = obj.event if hasattr(obj, "event") else (obj.order.event if hasattr(obj, "order") else None)
         if not event:
             return None
         if key == "event_slug":
@@ -211,9 +206,7 @@ def _resolve_eventyay_field(obj: Any, key: str) -> Any:
     return getattr(obj, key, None)
 
 
-def resolve_hubspot_properties(
-    obj: Any, object_mapping: ObjectTypeMapping
-) -> Dict[str, Any]:
+def resolve_hubspot_properties(obj: Any, object_mapping: ObjectTypeMapping) -> dict[str, Any]:
     """
     Takes an eventyay object (Order or OrderPosition) and an ObjectTypeMapping,
     and returns a dict of HubSpot property values using the field mappings.
@@ -228,9 +221,7 @@ def resolve_hubspot_properties(
 
     properties = {}
     try:
-        hubspot_props = get_hubspot_properties(
-            object_mapping.event, object_mapping.hubspot_object_type
-        )
+        hubspot_props = get_hubspot_properties(object_mapping.event, object_mapping.hubspot_object_type)
         hubspot_props_dict = {p["key"]: p for p in hubspot_props}
     except HubSpotFetchError as e:
         logger.error(f"Could not load HubSpot properties: {e}")
@@ -238,11 +229,10 @@ def resolve_hubspot_properties(
 
     if not hubspot_props_dict and field_mappings.exists():
         logger.warning(
-            f"No HubSpot properties found for {object_mapping.hubspot_object_type} on event {object_mapping.event.id}, but field mappings exist."
+            f"No HubSpot properties found for {object_mapping.hubspot_object_type} on event {object_mapping.event.id}, "
+            "but field mappings exist."
         )
-        raise HubSpotTransientError(
-            f"HubSpot properties not available for {object_mapping.hubspot_object_type}."
-        )
+        raise HubSpotTransientError(f"HubSpot properties not available for {object_mapping.hubspot_object_type}.")
 
     for mapping in field_mappings:
         val = None
@@ -333,16 +323,12 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
             return
 
         if order.status != Order.STATUS_PAID:
-            logger.info(
-                f"Order {order_id} is not paid (status: {order.status}). Skipping sync."
-            )
+            logger.info(f"Order {order_id} is not paid (status: {order.status}). Skipping sync.")
             return
 
         active_mappings = ObjectTypeMapping.objects.filter(event=event)
         if not active_mappings.exists():
-            logger.info(
-                f"No active object mappings found for event {event_id}. Skipping sync for order {order_id}."
-            )
+            logger.info(f"No active object mappings found for event {event_id}. Skipping sync for order {order_id}.")
             # Clean up pending logs for this order
             SyncLog.objects.filter(
                 event=event,
@@ -409,22 +395,16 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
     existing_properties = {}
     if existing_id:
         fill_if_empty_fields = [
-            prop
-            for prop, val in raw_properties.items()
-            if mapping_modes.get(prop) == SyncMode.FILL_IF_EMPTY
+            prop for prop, val in raw_properties.items() if mapping_modes.get(prop) == SyncMode.FILL_IF_EMPTY
         ]
         if fill_if_empty_fields:
             try:
-                existing_properties = get_record(
-                    event, config.hubspot_object_type, existing_id, fill_if_empty_fields
-                )
+                existing_properties = get_record(event, config.hubspot_object_type, existing_id, fill_if_empty_fields)
             except HubSpotTransientError as e:
                 raise e
             except HubSpotPermanentError as e:
                 # If we fail to fetch, it's safer to not overwrite anything
-                logger.warning(
-                    f"Could not fetch record {existing_id} from HubSpot: {e}"
-                )
+                logger.warning(f"Could not fetch record {existing_id} from HubSpot: {e}")
 
     properties_to_send = {}
     for prop, val in raw_properties.items():
@@ -465,9 +445,7 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
                 action=SyncAction.UPDATE if existing_id else SyncAction.CREATE,
                 direction=SyncDirection.PUSH,
                 status=SyncStatus.SUCCESS,
-                detail={
-                    "message": "No properties to sync based on mappings and current values"
-                },
+                detail={"message": "No properties to sync based on mappings and current values"},
             )
         return
 
@@ -475,15 +453,11 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
         conflict_detected = False
         if existing_id:
             try:
-                hubspot_id = update_record(
-                    event, config.hubspot_object_type, existing_id, properties_to_send
-                )
+                hubspot_id = update_record(event, config.hubspot_object_type, existing_id, properties_to_send)
                 action = SyncAction.UPDATE
             except HubSpotRecordNotFoundError:
                 try:
-                    hubspot_id = create_record(
-                        event, config.hubspot_object_type, properties_to_send
-                    )
+                    hubspot_id = create_record(event, config.hubspot_object_type, properties_to_send)
                     action = SyncAction.CREATE
                 except HubSpotConflictError as conflict:
                     existing_id = conflict.existing_id
@@ -491,9 +465,7 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
                     conflict_detected = True
         else:
             try:
-                hubspot_id = create_record(
-                    event, config.hubspot_object_type, properties_to_send
-                )
+                hubspot_id = create_record(event, config.hubspot_object_type, properties_to_send)
                 action = SyncAction.CREATE
             except HubSpotConflictError as conflict:
                 existing_id = conflict.existing_id
@@ -501,12 +473,11 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
                 conflict_detected = True
 
         if action == SyncAction.UPDATE and conflict_detected:
-            # We must re-evaluate properties using the newly discovered existing_id to respect FILL_IF_NEW / FILL_IF_EMPTY!
+            # We must re-evaluate properties using the newly discovered existing_id
+            # to respect FILL_IF_NEW / FILL_IF_EMPTY!
             existing_properties = {}
             fill_if_empty_fields = [
-                prop
-                for prop, val in raw_properties.items()
-                if mapping_modes.get(prop) == SyncMode.FILL_IF_EMPTY
+                prop for prop, val in raw_properties.items() if mapping_modes.get(prop) == SyncMode.FILL_IF_EMPTY
             ]
             if fill_if_empty_fields:
                 try:
@@ -519,9 +490,7 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
                 except HubSpotTransientError as e:
                     raise e
                 except HubSpotPermanentError as e:
-                    logger.warning(
-                        f"Could not fetch record {existing_id} from HubSpot on conflict: {e}"
-                    )
+                    logger.warning(f"Could not fetch record {existing_id} from HubSpot on conflict: {e}")
 
             properties_to_send = {}
             for prop, val in raw_properties.items():
@@ -539,9 +508,7 @@ def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
                         properties_to_send[prop] = val
 
             if properties_to_send:
-                hubspot_id = update_record(
-                    event, config.hubspot_object_type, existing_id, properties_to_send
-                )
+                hubspot_id = update_record(event, config.hubspot_object_type, existing_id, properties_to_send)
             else:
                 hubspot_id = existing_id or ""
 
@@ -594,19 +561,13 @@ def sync_all_mappings_task(self, event_id: int):
     which processes all active object/field mappings for each order.
     """
     with scopes_disabled():
-        order_ids = list(
-            Order.objects.filter(
-                event_id=event_id, status=Order.STATUS_PAID
-            ).values_list("id", flat=True)
-        )
+        order_ids = list(Order.objects.filter(event_id=event_id, status=Order.STATUS_PAID).values_list("id", flat=True))
 
     if not order_ids:
         logger.info(f"No orders found for event {event_id}. Nothing to sync.")
         return
 
-    logger.info(
-        f"Found {len(order_ids)} orders for event {event_id}. Queuing sync tasks."
-    )
+    logger.info(f"Found {len(order_ids)} orders for event {event_id}. Queuing sync tasks.")
     for order_id in order_ids:
         sync_order_to_hubspot.apply_async(args=[order_id, event_id], countdown=0)
 
@@ -632,9 +593,7 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
     try:
         with scope(organizer=event.organizer):
             properties = sync_hubspot_properties(event, object_type)
-        cache.set(
-            data_key, {"fetched_at": now(), "properties": properties}, timeout=None
-        )
+        cache.set(data_key, {"fetched_at": now(), "properties": properties}, timeout=None)
         cache.delete(error_key)
         cache.delete(lock_key)
         cache.delete(manual_sync_lock_key)

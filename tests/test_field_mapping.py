@@ -1,11 +1,12 @@
+from unittest.mock import patch
+
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
-
+from django_scopes import scope, scopes_disabled
 from eventyay.base.models import Order
-from hubspot.models import HubSpotFieldMapping, SyncMode, ObjectTypeMapping
-from django_scopes import scopes_disabled, scope
-from unittest.mock import patch
+
+from hubspot.models import HubSpotFieldMapping, ObjectTypeMapping, SyncMode
 
 
 @pytest.fixture(autouse=True)
@@ -97,9 +98,7 @@ def test_valid_save_one_identifier(
 
 
 @pytest.mark.django_db
-def test_no_identifier_blocks_save(
-    logged_in_organizer_client, mapping_url, organizer, event, settings
-):
+def test_no_identifier_blocks_save(logged_in_organizer_client, mapping_url, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     data = {
         "form-TOTAL_FORMS": "1",
@@ -119,9 +118,7 @@ def test_no_identifier_blocks_save(
 
 
 @pytest.mark.django_db
-def test_multiple_identifiers_blocks_save(
-    logged_in_organizer_client, mapping_url, organizer, event, settings
-):
+def test_multiple_identifiers_blocks_save(logged_in_organizer_client, mapping_url, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     data = {
         "form-TOTAL_FORMS": "2",
@@ -145,9 +142,7 @@ def test_multiple_identifiers_blocks_save(
 
 
 @pytest.mark.django_db
-def test_incompatible_types_warning_but_saves(
-    logged_in_organizer_client, mapping_url, organizer, event, settings
-):
+def test_incompatible_types_warning_but_saves(logged_in_organizer_client, mapping_url, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     # Mapping a boolean (testmode) to a string (dealname)
     data = {
@@ -170,9 +165,7 @@ def test_incompatible_types_warning_but_saves(
 
 
 @pytest.mark.django_db
-def test_compatible_types_save_without_warning(
-    logged_in_organizer_client, mapping_url, organizer, event, settings
-):
+def test_compatible_types_save_without_warning(logged_in_organizer_client, mapping_url, organizer, event, settings):
     settings.SITE_URL = "https://testserver"
     data = {
         "form-TOTAL_FORMS": "1",

@@ -1,7 +1,9 @@
 import datetime
-import os
 import logging
+import os
+
 import requests
+from django.core.cache import cache
 from django.db import transaction
 from django.utils.timezone import now
 from django_scopes import scope
@@ -18,7 +20,6 @@ from .models import (
     SyncLog,
     SyncStatus,
 )
-from django.core.cache import cache
 
 
 class HubSpotFetchError(Exception):
@@ -27,9 +28,7 @@ class HubSpotFetchError(Exception):
     pass
 
 
-def get_hubspot_properties(
-    event, object_type: str, force_sync: bool = False
-) -> list[dict]:
+def get_hubspot_properties(event, object_type: str, force_sync: bool = False) -> list[dict]:
     """
     Returns synced HubSpot properties from the cache.
     If no complete sync exists, fetches synchronously.
@@ -55,9 +54,7 @@ def get_hubspot_properties(
     is_stale = False
     if cached_data:
         fetched_at = cached_data.get("fetched_at")
-        if not fetched_at or fetched_at < now() - datetime.timedelta(
-            minutes=ttl_minutes
-        ):
+        if not fetched_at or fetched_at < now() - datetime.timedelta(minutes=ttl_minutes):
             is_stale = True
 
     if not cached_data:
@@ -89,9 +86,7 @@ def get_hubspot_properties(
             if force_sync or cache.add(rate_limit_key, "1", timeout=30):
                 from .tasks import refresh_hubspot_properties_task
 
-                refresh_hubspot_properties_task.apply_async(
-                    args=[event.id, object_type]
-                )
+                refresh_hubspot_properties_task.apply_async(args=[event.id, object_type])
             else:
                 cache.delete(lock_key)
 
@@ -119,9 +114,7 @@ def sync_hubspot_properties(event, object_type: str) -> list[dict]:
             params["after"] = cursor
 
         try:
-            response = requests.get(
-                base_url, headers=headers, params=params, timeout=15
-            )
+            response = requests.get(base_url, headers=headers, params=params, timeout=15)
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After")
                 e = HubSpotFetchError("Rate limited by HubSpot")
@@ -276,10 +269,7 @@ def get_valid_hubspot_token(event) -> str | None:
         # 1. Try event token
         try:
             event_token = HubSpotOAuthToken.objects.select_for_update().get(event=event)
-            if (
-                event_token.expires_at
-                and event_token.expires_at > now() + datetime.timedelta(minutes=5)
-            ):
+            if event_token.expires_at and event_token.expires_at > now() + datetime.timedelta(minutes=5):
                 return event_token.access_token
             return _refresh_token_record(event_token, event, is_organizer=False)
         except HubSpotOAuthToken.DoesNotExist:
@@ -287,9 +277,7 @@ def get_valid_hubspot_token(event) -> str | None:
 
         # 2. Check Organizer settings
         try:
-            org_settings = OrganizerHubSpotSettings.objects.get(
-                organizer=event.organizer
-            )
+            org_settings = OrganizerHubSpotSettings.objects.get(organizer=event.organizer)
             if not org_settings.sync_enabled:
                 return None
         except OrganizerHubSpotSettings.DoesNotExist:
@@ -297,13 +285,8 @@ def get_valid_hubspot_token(event) -> str | None:
 
         # 3. Try Organizer token
         try:
-            org_token = OrganizerHubSpotOAuthToken.objects.select_for_update().get(
-                organizer=event.organizer
-            )
-            if (
-                org_token.expires_at
-                and org_token.expires_at > now() + datetime.timedelta(minutes=5)
-            ):
+            org_token = OrganizerHubSpotOAuthToken.objects.select_for_update().get(organizer=event.organizer)
+            if org_token.expires_at and org_token.expires_at > now() + datetime.timedelta(minutes=5):
                 return org_token.access_token
             return _refresh_token_record(org_token, event.organizer, is_organizer=True)
         except OrganizerHubSpotOAuthToken.DoesNotExist:
@@ -326,13 +309,9 @@ def is_sync_enabled(event) -> bool:
         if HubSpotOAuthToken.objects.filter(event=event).exists():
             return True
 
-        org_settings = OrganizerHubSpotSettings.objects.filter(
-            organizer=event.organizer
-        ).first()
+        org_settings = OrganizerHubSpotSettings.objects.filter(organizer=event.organizer).first()
         if org_settings is not None and org_settings.sync_enabled:
-            if OrganizerHubSpotOAuthToken.objects.filter(
-                organizer=event.organizer
-            ).exists():
+            if OrganizerHubSpotOAuthToken.objects.filter(organizer=event.organizer).exists():
                 return True
 
         return False

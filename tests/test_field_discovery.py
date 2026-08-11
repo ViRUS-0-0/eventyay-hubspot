@@ -1,7 +1,7 @@
 import pytest
+from django_scopes import scope
 from eventyay.base.models import Question
 
-from django_scopes import scope
 from hubspot.field_discovery import get_available_fields
 
 
@@ -54,9 +54,7 @@ def test_get_available_fields_order():
 
 @pytest.mark.django_db
 def test_get_available_fields_order_position_no_event():
-    with pytest.raises(
-        ValueError, match="event is required when object_type is 'order_position'"
-    ):
+    with pytest.raises(ValueError, match="event is required when object_type is 'order_position'"):
         get_available_fields("order_position")
 
 

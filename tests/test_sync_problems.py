@@ -1,21 +1,22 @@
 import pytest
-from django.urls import reverse
 from django.contrib.contenttypes.models import ContentType
+from django.urls import reverse
 from django.utils.timezone import now
-from eventyay.base.models import Order
 from django_scopes import scope
+from eventyay.base.models import Order
+
 from hubspot.models import (
-    HubSpotOAuthToken,
+    EventyayObjectType,
     HubSpotEventSettings,
-    ObjectTypeMapping,
-    HubSpotObjectMapping,
     HubSpotFieldMapping,
-    SyncLog,
+    HubSpotOAuthToken,
+    HubSpotObjectMapping,
+    HubSpotObjectType,
+    ObjectTypeMapping,
     SyncAction,
     SyncDirection,
+    SyncLog,
     SyncStatus,
-    EventyayObjectType,
-    HubSpotObjectType,
 )
 
 
@@ -45,9 +46,7 @@ def setup_hubspot(event):
 
 
 @pytest.mark.django_db
-def test_sync_status_banner_pending_count(
-    logged_in_organizer_client, event, order, setup_hubspot, settings
-):
+def test_sync_status_banner_pending_count(logged_in_organizer_client, event, order, setup_hubspot, settings):
     with scope(organizer=event.organizer):
         order.status = Order.STATUS_PAID
         order.save()
@@ -63,9 +62,7 @@ def test_sync_status_banner_pending_count(
 
 
 @pytest.mark.django_db
-def test_sync_status_banner_failed_count(
-    logged_in_organizer_client, event, order, setup_hubspot, settings
-):
+def test_sync_status_banner_failed_count(logged_in_organizer_client, event, order, setup_hubspot, settings):
     with scope(organizer=event.organizer):
         order.status = Order.STATUS_PAID
         order.save()
@@ -101,9 +98,7 @@ def test_sync_status_banner_failed_count(
 
 
 @pytest.mark.django_db
-def test_sync_problems_list_view(
-    logged_in_organizer_client, event, order, setup_hubspot, settings
-):
+def test_sync_problems_list_view(logged_in_organizer_client, event, order, setup_hubspot, settings):
     with scope(organizer=event.organizer):
         order.status = Order.STATUS_PAID
         order.save()
@@ -121,9 +116,7 @@ def test_sync_problems_list_view(
 
 
 @pytest.mark.django_db
-def test_dismiss_sync_record(
-    logged_in_organizer_client, event, order, setup_hubspot, settings
-):
+def test_dismiss_sync_record(logged_in_organizer_client, event, order, setup_hubspot, settings):
     with scope(organizer=event.organizer):
         order.status = Order.STATUS_PAID
         order.save()
@@ -159,9 +152,7 @@ def test_dismiss_sync_record(
     assert response.status_code == 302
 
     with scope(organizer=event.organizer):
-        dismiss_log = SyncLog.objects.filter(
-            event=event, object_mapping=om, action=SyncAction.DISMISS
-        ).first()
+        dismiss_log = SyncLog.objects.filter(event=event, object_mapping=om, action=SyncAction.DISMISS).first()
         assert dismiss_log is not None
         assert dismiss_log.status == SyncStatus.SUCCESS
 

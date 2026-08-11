@@ -1,7 +1,8 @@
-import pytest
-from eventyay.base.models import Event, Organizer, Team, User, Order
-from django.utils.timezone import now
 from datetime import timedelta
+
+import pytest
+from django.utils.timezone import now
+from eventyay.base.models import Event, Order, Organizer, Team, User
 
 
 @pytest.fixture
