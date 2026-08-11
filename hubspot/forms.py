@@ -153,7 +153,7 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         grouped = {}
         for f in fields_list:
             cat = f.get("category", "Other")
-            if getattr(self, "exclude_questions", False) and cat == "Questions":
+            if getattr(self, "exclude_questions", False) and cat == "Custom questions":
                 continue
             if cat not in grouped:
                 grouped[cat] = []
@@ -200,6 +200,14 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         self.fields["eventyay_field"].widget = forms.Select(choices=ey_choices)
         self.fields["hubspot_property"].widget = forms.Select(choices=hs_choices)
 
+        # Store valid keys for server-side validation (widget choices don't enforce)
+        self._valid_ey_keys = {
+            k for group in ey_choices for k, _ in (group[1] if isinstance(group[1], list) else [(group[0], group[1])])
+        }
+        self._valid_hs_keys = {
+            k for group in hs_choices for k, _ in (group[1] if isinstance(group[1], list) else [(group[0], group[1])])
+        }
+
         for name, field in self.fields.items():
             if name != "is_active":
                 field.widget.attrs["class"] = "form-control"
@@ -225,6 +233,14 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         cleaned_data = super().clean()
         eventyay_field = cleaned_data.get("eventyay_field", "")
         hubspot_property = cleaned_data.get("hubspot_property", "")
+
+        if eventyay_field and hasattr(self, "_valid_ey_keys") and self._valid_ey_keys:
+            if eventyay_field not in self._valid_ey_keys:
+                self.add_error("eventyay_field", _("Invalid eventyay field."))
+
+        if hubspot_property and hasattr(self, "_valid_hs_keys") and self._valid_hs_keys:
+            if hubspot_property not in self._valid_hs_keys:
+                self.add_error("hubspot_property", _("Invalid HubSpot property."))
 
         self.warnings = self._calculate_warnings(eventyay_field, hubspot_property)
         return cleaned_data

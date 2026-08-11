@@ -369,10 +369,9 @@ def is_auto_sync_enabled(event) -> bool:
 def apply_default_mappings_to_all_events(organizer):
     """
     Applies organizer-level default HubSpot mappings to all existing events.
-    If an event already has conflicting mappings for the same field, it marks
-    has_mapping_conflict on the event's HubSpot settings.
+    Reconciles: upserts current defaults, deletes orphaned organizer_default
+    rows, then recomputes conflicts from the full event mapping set.
     """
-    from collections import defaultdict
 
     with scope(organizer=organizer):
         events = list(organizer.events.all())
@@ -412,20 +411,21 @@ def apply_default_mappings_to_all_events(organizer):
                 update_fields=["position"],
             )
 
-        custom_mappings = HubSpotFieldMapping.objects.filter(event__in=events).exclude(source="organizer_default")
-
-        custom_mappings_by_event = defaultdict(list)
-        for cm in custom_mappings:
-            custom_mappings_by_event[cm.event_id].append(cm)
+        valid_default_obj_pairs = set()
+        valid_default_field_keys = set()
+        for default_obj in default_obj_mappings:
+            if default_obj.eventyay_object_type == EventyayObjectType.ORDER:
+                ct = order_ct
+            elif default_obj.eventyay_object_type == EventyayObjectType.ORDER_POSITION:
+                ct = order_position_ct
+            else:
+                continue
+            valid_default_obj_pairs.add((default_obj.eventyay_object_type, default_obj.hubspot_object_type))
+            for df in default_obj.field_mappings.all():
+                valid_default_field_keys.add((ct.id, df.eventyay_field, default_obj.hubspot_object_type))
 
         field_mappings_to_create = []
-        settings_to_update = []
-
         for event in events:
-            settings = existing_settings[event.id]
-            conflict_found = False
-            event_custom_mappings = custom_mappings_by_event.get(event.id, [])
-
             for default_obj in default_obj_mappings:
                 if default_obj.eventyay_object_type == EventyayObjectType.ORDER:
                     content_type = order_ct
@@ -435,37 +435,6 @@ def apply_default_mappings_to_all_events(organizer):
                     continue
 
                 for default_field in default_obj.field_mappings.all():
-                    existing_custom = any(
-                        cm.content_type_id == content_type.id
-                        and cm.eventyay_field == default_field.eventyay_field
-                        and cm.hubspot_object_type == default_obj.hubspot_object_type
-                        for cm in event_custom_mappings
-                    )
-
-                    existing_custom_same_prop = any(
-                        cm.content_type_id == content_type.id
-                        and cm.hubspot_property == default_field.hubspot_property
-                        and cm.hubspot_object_type == default_obj.hubspot_object_type
-                        for cm in event_custom_mappings
-                    )
-
-                    if existing_custom or existing_custom_same_prop:
-                        conflict_found = True
-
-                    if default_field.sync_mode == SyncMode.IDENTIFIER:
-                        existing_identifier = next(
-                            (
-                                cm
-                                for cm in event_custom_mappings
-                                if cm.content_type_id == content_type.id
-                                and cm.hubspot_object_type == default_obj.hubspot_object_type
-                                and cm.sync_mode == SyncMode.IDENTIFIER
-                            ),
-                            None,
-                        )
-                        if existing_identifier and existing_identifier.eventyay_field != default_field.eventyay_field:
-                            conflict_found = True
-
                     field_mappings_to_create.append(
                         HubSpotFieldMapping(
                             event=event,
@@ -478,10 +447,6 @@ def apply_default_mappings_to_all_events(organizer):
                             is_active=default_field.is_active,
                         )
                     )
-
-            if conflict_found != settings.has_mapping_conflict:
-                settings.has_mapping_conflict = conflict_found
-                settings_to_update.append(settings)
 
         if field_mappings_to_create:
             HubSpotFieldMapping.objects.bulk_create(
@@ -497,79 +462,80 @@ def apply_default_mappings_to_all_events(organizer):
                 update_fields=["hubspot_property", "sync_mode", "is_active"],
             )
 
+        # -- Delete orphaned organizer_default field mappings --
+        orphaned_fields = HubSpotFieldMapping.objects.filter(event__in=events, source="organizer_default")
+        if valid_default_field_keys:
+            from django.db.models import Q
+
+            keep = Q()
+            for ct_id, ey_field, hs_obj_type in valid_default_field_keys:
+                keep |= Q(
+                    content_type_id=ct_id,
+                    eventyay_field=ey_field,
+                    hubspot_object_type=hs_obj_type,
+                )
+            orphaned_fields = orphaned_fields.exclude(keep)
+        orphaned_fields.delete()
+
+        settings_to_update = []
+        for event in events:
+            settings = existing_settings[event.id]
+            all_mappings = list(HubSpotFieldMapping.objects.filter(event=event))
+            conflict_found = _check_event_mapping_conflicts(all_mappings)
+
+            if conflict_found != settings.has_mapping_conflict:
+                settings.has_mapping_conflict = conflict_found
+                settings_to_update.append(settings)
+
         if settings_to_update:
             HubSpotEventSettings.objects.bulk_update(settings_to_update, ["has_mapping_conflict"])
 
 
+def _check_event_mapping_conflicts(event_mappings):
+    """
+    Returns True if any duplicate eventyay_field, hubspot_property, or
+    multiple identifiers exist within the same (content_type, hubspot_object_type)
+    group across all sources.
+    """
+    from collections import defaultdict
+
+    # Group by (content_type_id, hubspot_object_type)
+    groups = defaultdict(list)
+    for m in event_mappings:
+        groups[(m.content_type_id, m.hubspot_object_type)].append(m)
+
+    for mappings in groups.values():
+        seen_fields = set()
+        seen_props = set()
+        identifier_count = 0
+        for m in mappings:
+            if m.eventyay_field in seen_fields:
+                return True
+            seen_fields.add(m.eventyay_field)
+
+            if m.hubspot_property in seen_props:
+                return True
+            seen_props.add(m.hubspot_property)
+
+            if m.sync_mode == SyncMode.IDENTIFIER:
+                identifier_count += 1
+                if identifier_count > 1:
+                    return True
+    return False
+
+
 def check_and_clear_mapping_conflict(event):
     """
-    Checks if an event's field mappings resolve or introduce a conflict with
-    the organizer's default mappings, and updates the conflict flag accordingly.
+    Checks if an event's field mappings have any conflict (duplicate field,
+    property, or identifier) and updates the flag accordingly.
     """
     with scope(organizer=event.organizer):
         settings = HubSpotEventSettings.objects.filter(event=event).first()
         if not settings:
             return
 
-        conflict_found = False
-        default_obj_mappings = OrganizerDefaultObjectTypeMapping.objects.filter(
-            organizer=event.organizer
-        ).prefetch_related("field_mappings")
-
-        order_ct = ContentType.objects.get_for_model(Order)
-        order_position_ct = ContentType.objects.get_for_model(OrderPosition)
-
         event_mappings = list(HubSpotFieldMapping.objects.filter(event=event))
-
-        for default_obj in default_obj_mappings:
-            if default_obj.eventyay_object_type == EventyayObjectType.ORDER:
-                content_type = order_ct
-            elif default_obj.eventyay_object_type == EventyayObjectType.ORDER_POSITION:
-                content_type = order_position_ct
-            else:
-                continue
-
-            identifier_count = sum(
-                1
-                for cm in event_mappings
-                if cm.content_type_id == content_type.id
-                and cm.hubspot_object_type == default_obj.hubspot_object_type
-                and cm.sync_mode == SyncMode.IDENTIFIER
-            )
-
-            if identifier_count > 1:
-                conflict_found = True
-                break
-
-            for default_field in default_obj.field_mappings.all():
-                duplicate_eventyay_field = (
-                    sum(
-                        1
-                        for cm in event_mappings
-                        if cm.content_type_id == content_type.id
-                        and cm.eventyay_field == default_field.eventyay_field
-                        and cm.hubspot_object_type == default_obj.hubspot_object_type
-                    )
-                    > 1
-                )
-
-                duplicate_hubspot_property = (
-                    sum(
-                        1
-                        for cm in event_mappings
-                        if cm.content_type_id == content_type.id
-                        and cm.hubspot_property == default_field.hubspot_property
-                        and cm.hubspot_object_type == default_obj.hubspot_object_type
-                    )
-                    > 1
-                )
-
-                if duplicate_eventyay_field or duplicate_hubspot_property:
-                    conflict_found = True
-                    break
-
-            if conflict_found:
-                break
+        conflict_found = _check_event_mapping_conflicts(event_mappings)
 
         if conflict_found != settings.has_mapping_conflict:
             settings.has_mapping_conflict = conflict_found

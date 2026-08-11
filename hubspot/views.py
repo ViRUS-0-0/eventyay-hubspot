@@ -461,7 +461,7 @@ class EventHubSpotDisconnectView(EventPermissionRequiredMixin, View):
                     f"hubspot_properties_error_evt_{request.event.id}_{sync_type}",
                     f"hubspot_manual_sync_lock_evt_{request.event.id}_{sync_type}",
                     f"hubspot_properties_lock_evt_{request.event.id}_{sync_type}",
-                    f"hubspot_auto_sync_limit_{request.event.id}_{sync_type}",
+                    f"hubspot_auto_sync_limit_evt_{request.event.id}_{sync_type}",
                 ]
             )
         cache.delete_many(cache_keys)
@@ -751,6 +751,7 @@ class EventHubSpotFieldMappingView(EventPermissionRequiredMixin, TemplateView):
                 instance.event = request.event
                 instance.content_type = setup["content_type"]
                 instance.hubspot_object_type = setup["hubspot_object_type"]
+                instance.source = "custom"
                 instance.save()
 
             if formset.has_changed():
