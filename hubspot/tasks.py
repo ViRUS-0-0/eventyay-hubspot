@@ -618,8 +618,65 @@ def refresh_hubspot_properties_task(self, event_id: int, object_type: str):
             cache.delete(lock_key)
             cache.delete(manual_sync_lock_key)
             raise
-    except Exception as e:
-        cache.set(error_key, str(e), timeout=3600)
-        cache.delete(lock_key)
-        cache.delete(manual_sync_lock_key)
-        raise
+
+
+@shared_task
+def recovery_sweep_task(event_id: int):
+    """
+    Periodic recovery sweep for a single event.
+    Finds orders that failed to sync or were never synced at all,
+    and re-enqueues them through sync_order_to_hubspot.
+    """
+    try:
+        with scopes_disabled():
+            event = Event.objects.get(id=event_id)
+    except Event.DoesNotExist:
+        return
+
+    with scope(organizer=event.organizer):
+        from .services import is_auto_sync_enabled, is_sync_enabled
+
+        if not is_sync_enabled(event):
+            return
+        if not get_valid_hubspot_token(event):
+            return
+        if not is_auto_sync_enabled(event):
+            return
+
+    order_ids_to_sync = set()
+
+    with scope(organizer=event.organizer):
+        # 1. Failed syncs — find HubSpotObjectMappings whose latest SyncLog is FAILED
+        from .sync_logic import get_unresolved_failed_logs, get_unsynced_querysets
+
+        for entry in get_unresolved_failed_logs(event):
+            mapping = HubSpotObjectMapping.objects.filter(id=entry["object_mapping_id"]).first()
+            if not mapping:
+                continue
+            source_obj = mapping.content_object
+            if source_obj is None:
+                continue
+            if isinstance(source_obj, Order):
+                order_ids_to_sync.add(source_obj.id)
+            elif isinstance(source_obj, OrderPosition):
+                order_ids_to_sync.add(source_obj.order_id)
+
+        # 2. Never-synced orders — paid orders with no HubSpotObjectMapping
+        for _mapping, _content_type, qs in get_unsynced_querysets(event):
+            if _mapping.eventyay_object_type == "order":
+                order_ids_to_sync.update(qs.values_list("id", flat=True))
+            elif _mapping.eventyay_object_type == "order_position":
+                order_ids_to_sync.update(qs.values_list("order_id", flat=True))
+
+    if not order_ids_to_sync:
+        return
+
+    enqueued = 0
+    for order_id in order_ids_to_sync:
+        lock_key = f"hubspot_recovery_lock_{order_id}"
+        if cache.add(lock_key, "1", timeout=300):
+            sync_order_to_hubspot.apply_async(args=[order_id, event_id])
+            enqueued += 1
+
+    if enqueued:
+        logger.info(f"Recovery sweep for event {event_id}: enqueued {enqueued} orders for sync.")

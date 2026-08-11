@@ -176,6 +176,26 @@ def clear_audit_logs(sender, **kwargs):
     SyncLog.objects.filter(created_at__lt=threshold).delete()
 
 
+@receiver(periodic_task, dispatch_uid="hubspot_recovery_sweep")
+def recovery_sweep_hubspot_sync(sender, **kwargs):
+    return _recovery_sweep_throttled(sender, **kwargs)
+
+
+def _recovery_sweep_inner(sender, **kwargs):
+    from .tasks import recovery_sweep_task
+
+    for token in HubSpotOAuthToken.objects.all():
+        recovery_sweep_task.apply_async(args=[token.event_id])
+
+
+try:
+    from eventyay.helpers.periodic import minimum_interval
+
+    _recovery_sweep_throttled = minimum_interval(minutes_after_success=15)(_recovery_sweep_inner)
+except ImportError:
+    _recovery_sweep_throttled = _recovery_sweep_inner
+
+
 @receiver(order_info, dispatch_uid="hubspot_control_order_info")
 def control_order_info(sender, request, order, **kwargs):
     if not request.user.has_event_permission(request.organizer, request.event, "can_view_orders", request):
