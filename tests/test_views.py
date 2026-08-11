@@ -296,7 +296,7 @@ def test_organizer_settings_view_connection_and_mapping_status(
     assert response.status_code == 200
     events_dict = {e.id: e for e in response.context["events"]}
     e2_disabled = events_dict[event2.id]
-    assert e2_disabled.connection_badge_class == "muted"
+    assert e2_disabled.connection_badge_class == "default"
     assert "Not connected" in str(e2_disabled.connection_status_text)
 
 
