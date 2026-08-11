@@ -36,10 +36,17 @@ document.addEventListener("DOMContentLoaded", function() {
         select1.className = 'form-control';
         var ref1 = document.querySelector('select[name$="-eventyay_object_type"]');
         if (ref1) {
-            select1.innerHTML = ref1.innerHTML;
+            Array.from(ref1.options).forEach(function(opt) {
+                select1.appendChild(opt.cloneNode(true));
+            });
             select1.selectedIndex = 0;
         } else {
-            select1.innerHTML = '<option value="">---------</option><option value="order">Order</option><option value="order_position">Order position</option>';
+            [['', '---------'], ['order', 'Order'], ['order_position', 'Order position']].forEach(function(pair) {
+                var opt = document.createElement('option');
+                opt.value = pair[0];
+                opt.textContent = pair[1];
+                select1.appendChild(opt);
+            });
         }
         col1.appendChild(select1);
         row.appendChild(col1);
@@ -53,10 +60,17 @@ document.addEventListener("DOMContentLoaded", function() {
         select2.className = 'form-control';
         var ref2 = document.querySelector('select[name$="-hubspot_object_type"]');
         if (ref2) {
-            select2.innerHTML = ref2.innerHTML;
+            Array.from(ref2.options).forEach(function(opt) {
+                select2.appendChild(opt.cloneNode(true));
+            });
             select2.selectedIndex = 0;
         } else {
-            select2.innerHTML = '<option value="">---------</option><option value="contacts">Contacts</option><option value="deals">Deals</option>';
+            [['', '---------'], ['contacts', 'Contacts'], ['deals', 'Deals']].forEach(function(pair) {
+                var opt = document.createElement('option');
+                opt.value = pair[0];
+                opt.textContent = pair[1];
+                select2.appendChild(opt);
+            });
         }
         col2.appendChild(select2);
         row.appendChild(col2);
@@ -72,17 +86,24 @@ document.addEventListener("DOMContentLoaded", function() {
         editBtn.type = 'button';
         editBtn.className = 'btn btn-default btn-edit-mapping';
         editBtn.disabled = true;
-        editBtn.innerHTML = '<i class="fa fa-pencil"></i> ' + (typeof gettext !== 'undefined' ? gettext("Edit mapping") : 'Edit mapping');
+        var editIcon = document.createElement('i');
+        editIcon.className = 'fa fa-pencil';
+        editBtn.appendChild(editIcon);
+        editBtn.appendChild(document.createTextNode(' ' + (typeof gettext !== 'undefined' ? gettext('Edit mapping') : 'Edit mapping')));
 
         var upBtn = document.createElement('button');
         upBtn.type = 'button';
         upBtn.className = 'btn btn-default btn-move-up';
-        upBtn.innerHTML = '<i class="fa fa-arrow-up"></i>';
+        var upIcon = document.createElement('i');
+        upIcon.className = 'fa fa-arrow-up';
+        upBtn.appendChild(upIcon);
 
         var downBtn = document.createElement('button');
         downBtn.type = 'button';
         downBtn.className = 'btn btn-default btn-move-down';
-        downBtn.innerHTML = '<i class="fa fa-arrow-down"></i>';
+        var downIcon = document.createElement('i');
+        downIcon.className = 'fa fa-arrow-down';
+        downBtn.appendChild(downIcon);
 
         var deleteInput = document.createElement('input');
         deleteInput.type = 'hidden';
@@ -92,7 +113,9 @@ document.addEventListener("DOMContentLoaded", function() {
         var delBtn = document.createElement('button');
         delBtn.type = 'button';
         delBtn.className = 'btn btn-danger btn-delete-mapping';
-        delBtn.innerHTML = '<i class="fa fa-trash"></i>';
+        var delIcon = document.createElement('i');
+        delIcon.className = 'fa fa-trash';
+        delBtn.appendChild(delIcon);
 
         btnGroup.appendChild(editBtn);
         btnGroup.appendChild(upBtn);
