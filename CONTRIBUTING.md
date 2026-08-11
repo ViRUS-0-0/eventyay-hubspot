@@ -32,10 +32,12 @@ Understanding the repository structure will help you navigate the codebase:
    cp .env.hubspot.sample .env.hubspot
    ```
    To obtain your `HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET`:
-   - Create a developer account on the [HubSpot Developer Portal](https://developers.hubspot.com/).
-   - Under the **Legacy Apps** section, click **Create legacy app** (it will be created as a Public app) to generate a Client ID and Client Secret.
+   - Create a developer account on the [HubSpot Developer Portal](https://developers.hubspot.com/) and create a new app using HubSpot's project-based Developer Platform.
    - In the app settings, set your Redirect URI to match `HUBSPOT_REDIRECT_URI` (e.g., `http://localhost:8000/control/hubspot/callback/`).
+   - Configure the required app scopes to match the scopes listed in `.env.hubspot.sample` (e.g., `oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write`).
    - Add these credentials to your `.env.hubspot` file.
+
+   > **Warning:** Never commit `.env.hubspot` or share your `HUBSPOT_CLIENT_SECRET`.
 5. Activate the virtual environment you use for Eventyay development.
 6. Install the plugin in editable mode:
    ```bash
