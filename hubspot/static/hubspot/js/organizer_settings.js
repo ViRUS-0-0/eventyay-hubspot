@@ -198,3 +198,12 @@ document.addEventListener("DOMContentLoaded", function() {
         addBtn.click();
     }
 });
+
+document.addEventListener("DOMContentLoaded", function() {
+    var activitySelect = document.getElementById('activity-log-event-select');
+    if (activitySelect) {
+        activitySelect.addEventListener('change', function() {
+            document.getElementById('activity-log-event-form').submit();
+        });
+    }
+});

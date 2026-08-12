@@ -113,3 +113,9 @@
     margin-top: 25px;
     justify-content: flex-end;
 }
+
+.logs-filter-actions {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}

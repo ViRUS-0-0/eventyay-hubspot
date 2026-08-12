@@ -3,15 +3,26 @@
 
 {% block title %}{% translate "HubSpot Activity Log" %} :: {% endblock %}
 
+{% block custom_header %}
+    <link rel="stylesheet" type="text/css" href="{% static "hubspot/css/settings_landing.css" %}">
+{% endblock %}
+
 {% block content %}
     <h1>
-        <a href="{% url 'plugins:hubspot:hubspot' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-link btn-lg">
-            <i class="fa fa-arrow-left"></i>
-        </a>
+        {% if request.GET.from == "org" %}
+            <a href="{% url 'plugins:hubspot:org_hubspot' organizer=request.event.organizer.slug %}?event={{ request.event.slug }}" class="btn btn-link btn-lg">
+                <i class="fa fa-arrow-left"></i>
+            </a>
+        {% else %}
+            <a href="{% url 'plugins:hubspot:hubspot' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-link btn-lg">
+                <i class="fa fa-arrow-left"></i>
+            </a>
+        {% endif %}
         {% translate "HubSpot Activity Log" %}
     </h1>
 
             <form class="filter-form" action="" method="get">
+                {% if request.GET.from %}<input type="hidden" name="from" value="{{ request.GET.from }}">{% endif %}
                 <div class="row">
                     <div class="col-md-3 col-sm-6 col-xs-12">
                         {% bootstrap_field filter_form.query layout='inline' %}
@@ -26,9 +37,9 @@
                         {% bootstrap_field filter_form.date_until layout='inline' %}
                     </div>
                     <div class="col-md-3 col-sm-6 col-xs-12">
-                        <div style="display: flex; gap: 10px; align-items: flex-start;">
+                        <div class="logs-filter-actions">
                             {% include "eventyay_common/filter_actions.html" %}
-                            <button type="submit" form="logs-form" id="delete-logs-btn" class="btn btn-danger" name="action" value="delete" style="display: none;" title="{% translate 'Delete logs' %}">
+                            <button type="submit" form="logs-form" id="delete-logs-btn" class="btn btn-danger hidden-element" name="action" value="delete" title="{% translate 'Delete logs' %}">
                                 <i class="fa fa-trash"></i> {% translate 'Delete logs' %}
                             </button>
                         </div>

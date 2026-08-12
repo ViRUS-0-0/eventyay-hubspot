@@ -1265,6 +1265,15 @@ class OrganizerHubSpotSettingsView(OrganizerPermissionRequiredMixin, OrganizerDe
                 event.mapping_badge_class = "default"
 
         context["events"] = events
+
+        selected_event_slug = self.request.GET.get("event")
+        if selected_event_slug:
+            context["selected_event_slug"] = selected_event_slug
+            selected_event = next((e for e in events if e.slug == selected_event_slug), None)
+            if selected_event:
+                context["selected_event"] = selected_event
+                context["recent_activities"] = get_hubspot_activity_logs(selected_event)[:5]
+
         return context
 
     def post(self, request, *args, **kwargs):

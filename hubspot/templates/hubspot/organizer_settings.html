@@ -106,7 +106,7 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-center">
-                                    <label class="hubspot-toggle">
+                                    <label class="hubspot-toggle" style="vertical-align: middle;">
                                         <input type="checkbox" name="event_sync_enabled_{{ event.id }}" value="1" {% if event.event_sync_enabled %}checked{% endif %}>
                                         <span class="slider"></span>
                                     </label>
@@ -220,6 +220,59 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% translate "Activity Logs" %}</h3>
+        </div>
+        <div class="panel-body">
+            <form method="get" action="" id="activity-log-event-form" class="form-inline activity-log-form">
+                <div class="form-group">
+                    <label for="activity-log-event-select" class="activity-log-label">{% translate "Event" %}</label>
+                    <select name="event" id="activity-log-event-select" class="form-control activity-log-select">
+                        <option value="">— {% translate "Select an event" %} —</option>
+                        {% for ev in events %}
+                            <option value="{{ ev.slug }}" {% if ev.slug == selected_event_slug %}selected{% endif %}>{{ ev.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+
+            {% if selected_event %}
+                {% if recent_activities %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    <th>{% translate "Time" %}</th>
+                                    <th>{% translate "Action" %}</th>
+                                    <th>{% translate "Log Type" %}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for activity in recent_activities %}
+                                    <tr>
+                                        <td class="text-muted"><small>{{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}</small></td>
+                                        <td>{{ activity.text }}</td>
+                                        <td>{{ activity.type|title }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-center">
+                        <a href="{% url 'plugins:hubspot:logs' organizer=request.organizer.slug event=selected_event.slug %}?from=org" class="btn btn-default">
+                            {% translate "View more" %}
+                        </a>
+                    </div>
+                {% else %}
+                    <p class="text-muted">{% translate "No activity log entries for this event." %}</p>
+                {% endif %}
+            {% elif not selected_event_slug %}
+                <p class="text-muted">{% translate "Select an event to view its activity logs." %}</p>
+            {% endif %}
         </div>
     </div>
     {% endif %}
