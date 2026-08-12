@@ -1,13 +1,15 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
 from eventyay.base.forms.widgets import DatePickerWidget
-from eventyay.base.models import Event
+from eventyay.base.models import Event, Organizer
 from eventyay.control.forms.filter import FilterForm
 
 from .models import (
     HubSpotEventSettings,
     HubSpotFieldMapping,
     ObjectTypeMapping,
+    OrganizerDefaultFieldMapping,
+    OrganizerDefaultObjectTypeMapping,
     SyncMode,
 )
 
@@ -151,6 +153,8 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         grouped = {}
         for f in fields_list:
             cat = f.get("category", "Other")
+            if getattr(self, "exclude_questions", False) and cat == "Custom questions":
+                continue
             if cat not in grouped:
                 grouped[cat] = []
 
@@ -196,6 +200,14 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         self.fields["eventyay_field"].widget = forms.Select(choices=ey_choices)
         self.fields["hubspot_property"].widget = forms.Select(choices=hs_choices)
 
+        # Store valid keys for server-side validation (widget choices don't enforce)
+        self._valid_ey_keys = {
+            k for group in ey_choices for k, _ in (group[1] if isinstance(group[1], list) else [(group[0], group[1])])
+        }
+        self._valid_hs_keys = {
+            k for group in hs_choices for k, _ in (group[1] if isinstance(group[1], list) else [(group[0], group[1])])
+        }
+
         for name, field in self.fields.items():
             if name != "is_active":
                 field.widget.attrs["class"] = "form-control"
@@ -221,6 +233,14 @@ class HubSpotFieldMappingForm(forms.ModelForm):
         cleaned_data = super().clean()
         eventyay_field = cleaned_data.get("eventyay_field", "")
         hubspot_property = cleaned_data.get("hubspot_property", "")
+
+        if eventyay_field and hasattr(self, "_valid_ey_keys") and self._valid_ey_keys:
+            if eventyay_field not in self._valid_ey_keys:
+                self.add_error("eventyay_field", _("Invalid eventyay field."))
+
+        if hubspot_property and hasattr(self, "_valid_hs_keys") and self._valid_hs_keys:
+            if hubspot_property not in self._valid_hs_keys:
+                self.add_error("hubspot_property", _("Invalid HubSpot property."))
 
         self.warnings = self._calculate_warnings(eventyay_field, hubspot_property)
         return cleaned_data
@@ -259,6 +279,7 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
 
         identifier_count = 0
         seen_fields = set()
+        seen_properties = set()
         for form in self.forms:
             if self.can_delete and self._should_delete_form(form):
                 continue
@@ -277,6 +298,16 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
                     )
                 seen_fields.add(eventyay_field)
 
+            hubspot_property = form.cleaned_data.get("hubspot_property")
+            if hubspot_property:
+                if hubspot_property in seen_properties:
+                    raise forms.ValidationError(
+                        _("You cannot map multiple fields to the same HubSpot property ('%(prop)s')."),
+                        params={"prop": hubspot_property},
+                        code="duplicate_property",
+                    )
+                seen_properties.add(hubspot_property)
+
         if identifier_count == 0:
             raise forms.ValidationError(
                 _("Exactly one row must have its sync mode set to 'Identifier'."),
@@ -288,3 +319,73 @@ class BaseHubSpotFieldMappingFormSet(forms.BaseModelFormSet):
                 params={"count": identifier_count},
                 code="multiple_identifiers",
             )
+
+
+class OrganizerDefaultObjectTypeMappingForm(forms.ModelForm):
+    class Meta:
+        model = OrganizerDefaultObjectTypeMapping
+        fields = ["eventyay_object_type", "hubspot_object_type", "position"]
+        widgets = {
+            "eventyay_object_type": forms.Select(attrs={"class": "form-control"}),
+            "hubspot_object_type": forms.Select(attrs={"class": "form-control"}),
+            "position": forms.HiddenInput(attrs={"class": "mapping-position"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "position" in self.fields:
+            self.fields["position"].required = False
+
+    def clean_position(self):
+        pos = self.cleaned_data.get("position")
+        return pos if pos is not None else 0
+
+
+class BaseOrganizerDefaultObjectTypeMappingFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        seen = set()
+        for form in self.forms:
+            if self._should_delete_form(form):
+                continue
+            if not form.cleaned_data:
+                continue
+            pair = (
+                form.cleaned_data.get("eventyay_object_type"),
+                form.cleaned_data.get("hubspot_object_type"),
+            )
+            if not all(pair):
+                continue
+            if pair in seen:
+                raise forms.ValidationError(
+                    _(
+                        "Duplicate mapping: each eventyay / HubSpot object-type "
+                        "pair may only appear once per organizer."
+                    )
+                )
+            seen.add(pair)
+        super().clean()
+
+
+OrganizerDefaultObjectTypeMappingFormSet = forms.inlineformset_factory(
+    parent_model=Organizer,
+    model=OrganizerDefaultObjectTypeMapping,
+    form=OrganizerDefaultObjectTypeMappingForm,
+    formset=BaseOrganizerDefaultObjectTypeMappingFormSet,
+    fk_name="organizer",
+    extra=0,
+    can_delete=True,
+)
+
+
+class OrganizerDefaultFieldMappingForm(HubSpotFieldMappingForm):
+    class Meta:
+        model = OrganizerDefaultFieldMapping
+        fields = ["eventyay_field", "hubspot_property", "sync_mode", "is_active"]
+
+    def __init__(self, *args, **kwargs):
+        self.exclude_questions = True
+        super().__init__(*args, **kwargs)
+
+
+class BaseOrganizerDefaultFieldMappingFormSet(BaseHubSpotFieldMappingFormSet):
+    pass

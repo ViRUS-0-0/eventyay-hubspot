@@ -7,9 +7,11 @@ from hubspot.views import (
     EventHubSpotDisconnectView,
     EventHubSpotFieldMappingView,
     EventHubSpotLogView,
+    EventHubSpotMappingResolutionRedirectView,
     EventHubSpotSettingsView,
     EventHubSpotSyncMappingView,
     OrganizerHubSpotConnectView,
+    OrganizerHubSpotDefaultMappingView,
     OrganizerHubSpotDisconnectView,
     OrganizerHubSpotSettingsView,
     RetryAllFailedView,
@@ -25,6 +27,11 @@ urlpatterns = [
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/",
         EventHubSpotSettingsView.as_view(),
         name="hubspot",
+    ),
+    path(
+        "control/event/<orgslug:organizer>/<slug:event>/hubspot/resolve-conflict/",
+        EventHubSpotMappingResolutionRedirectView.as_view(),
+        name="resolve_conflict",
     ),
     path(
         "control/event/<orgslug:organizer>/<slug:event>/hubspot/connect/",
@@ -100,5 +107,10 @@ urlpatterns = [
         "common/organizer/<orgslug:organizer>/hubspot/disconnect/",
         OrganizerHubSpotDisconnectView.as_view(),
         name="org_disconnect",
+    ),
+    path(
+        "common/organizer/<orgslug:organizer>/hubspot/default-mapping/<int:mapping_id>/fields/",
+        OrganizerHubSpotDefaultMappingView.as_view(),
+        name="org_default_mapping_fields",
     ),
 ]

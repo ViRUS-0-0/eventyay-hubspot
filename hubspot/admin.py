@@ -7,6 +7,8 @@ from .models import (
     HubSpotOAuthToken,
     HubSpotObjectMapping,
     ObjectTypeMapping,
+    OrganizerDefaultFieldMapping,
+    OrganizerDefaultObjectTypeMapping,
     SyncLog,
 )
 
@@ -144,4 +146,37 @@ class ObjectTypeMappingAdmin(admin.ModelAdmin):
     )
     list_filter = ("event__organizer", "eventyay_object_type", "hubspot_object_type")
     search_fields = ("event__name",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(OrganizerDefaultObjectTypeMapping)
+class OrganizerDefaultObjectTypeMappingAdmin(admin.ModelAdmin):
+    list_display = (
+        "organizer",
+        "eventyay_object_type",
+        "hubspot_object_type",
+        "created_at",
+    )
+    list_filter = ("organizer", "eventyay_object_type", "hubspot_object_type")
+    search_fields = ("organizer__name",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(OrganizerDefaultFieldMapping)
+class OrganizerDefaultFieldMappingAdmin(admin.ModelAdmin):
+    list_display = (
+        "object_type_mapping",
+        "eventyay_field",
+        "hubspot_property",
+        "sync_mode",
+        "is_active",
+        "created_at",
+    )
+    list_filter = (
+        "object_type_mapping__organizer",
+        "object_type_mapping__hubspot_object_type",
+        "is_active",
+        "sync_mode",
+    )
+    search_fields = ("eventyay_field", "hubspot_property")
     readonly_fields = ("created_at", "updated_at")
