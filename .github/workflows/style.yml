@@ -2,12 +2,12 @@ name: Code Style
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, dev ]
     paths-ignore:
       - 'hubspot/locale/**'
       - 'hubspot/static/**'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, dev ]
     paths-ignore:
       - 'hubspot/locale/**'
       - 'hubspot/static/**'
