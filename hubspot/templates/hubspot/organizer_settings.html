@@ -228,7 +228,7 @@
             <h3 class="panel-title">{% translate "Activity Logs" %}</h3>
         </div>
         <div class="panel-body">
-            <form method="get" action="" id="activity-log-event-form" class="form-inline activity-log-form">
+            <form method="get" action="" id="activity-log-event-form" class="form-inline activity-log-form filter-form">
                 <div class="form-group">
                     <label for="activity-log-event-select" class="activity-log-label">{% translate "Event" %}</label>
                     <select name="event" id="activity-log-event-select" class="form-control activity-log-select">
@@ -240,39 +240,42 @@
                 </div>
             </form>
 
-            {% if selected_event %}
-                {% if recent_activities %}
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped">
-                            <thead>
-                                <tr>
-                                    <th>{% translate "Time" %}</th>
-                                    <th>{% translate "Action" %}</th>
-                                    <th>{% translate "Log Type" %}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for activity in recent_activities %}
+            <div data-ajax-results-region>
+                {% if selected_event %}
+                    {% if recent_activities %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-striped">
+                                <thead>
                                     <tr>
-                                        <td class="text-muted"><small>{{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}</small></td>
-                                        <td>{{ activity.text }}</td>
-                                        <td>{{ activity.type|title }}</td>
+                                        <th>{% translate "Time" %}</th>
+                                        <th>{% translate "Action" %}</th>
+                                        <th>{% translate "Log Type" %}</th>
                                     </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="text-center">
-                        <a href="{% url 'plugins:hubspot:logs' organizer=request.organizer.slug event=selected_event.slug %}?from=org" class="btn btn-default">
-                            {% translate "View more" %}
-                        </a>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {% for activity in recent_activities %}
+                                        <tr>
+                                            <td class="text-muted"><small>{{ activity.timestamp|date:"SHORT_DATETIME_FORMAT" }}</small></td>
+                                            <td>{{ activity.text }}</td>
+                                            <td>{{ activity.type|title }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-center">
+                            <a href="{% url 'plugins:hubspot:logs' organizer=request.organizer.slug event=selected_event.slug %}?from=org" class="btn btn-default">
+                                {% translate "View more" %}
+                            </a>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">{% translate "No activity log entries for this event." %}</p>
+                    {% endif %}
                 {% else %}
-                    <p class="text-muted">{% translate "No activity log entries for this event." %}</p>
+                    <p class="text-muted">{% translate "Select an event to view its activity logs." %}</p>
                 {% endif %}
-            {% elif not selected_event_slug %}
-                <p class="text-muted">{% translate "Select an event to view its activity logs." %}</p>
-            {% endif %}
+            </div>
+
         </div>
     </div>
     {% endif %}

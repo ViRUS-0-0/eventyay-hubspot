@@ -491,5 +491,6 @@ def test_organizer_activity_logs_only_organizer_events(logged_in_organizer_clien
     url = reverse("plugins:hubspot:org_hubspot", kwargs={"organizer": organizer.slug})
     response = logged_in_organizer_client.get(url + f"?event={other_event.slug}")
     assert response.status_code == 200
-    assert response.context["recent_activities"] == []
-    assert response.context["selected_event"] is None
+    assert "recent_activities" not in response.context
+
+    assert "selected_event" not in response.context
