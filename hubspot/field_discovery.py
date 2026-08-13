@@ -200,9 +200,6 @@ def get_available_fields(object_type: str, event=None) -> list[dict]:
             },
         ]
     elif object_type == "order_position":
-        if event is None:
-            raise ValueError("event is required when object_type is 'order_position'")
-
         fields = [
             # Direct fields on OrderPosition (AbstractPosition)
             {
@@ -439,21 +436,22 @@ def get_available_fields(object_type: str, event=None) -> list[dict]:
             },
         ]
 
-        questions = event.questions.filter(active=True)
-        for q in questions:
-            if q.type == Question.TYPE_FILE:
-                continue
+        if event is not None:
+            questions = event.questions.filter(active=True)
+            for q in questions:
+                if q.type == Question.TYPE_FILE:
+                    continue
 
-            data_type = QUESTION_TYPE_MAP.get(q.type, "text")
+                data_type = QUESTION_TYPE_MAP.get(q.type, "text")
 
-            fields.append(
-                {
-                    "key": f"question_{q.identifier}",
-                    "label": str(q.question),
-                    "data_type": data_type,
-                    "category": _("Questions"),
-                }
-            )
+                fields.append(
+                    {
+                        "key": f"question_{q.identifier}",
+                        "label": f"{_('Question')}: {q.question}",
+                        "data_type": data_type,
+                        "category": _("Custom questions"),
+                    }
+                )
 
         return fields
 

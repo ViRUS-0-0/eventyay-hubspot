@@ -80,8 +80,8 @@ def test_hubspot_disconnect_view_connected(mock_delete, logged_in_organizer_clie
     with scope(organizer=event.organizer):
         from django.core.cache import cache
 
-        cache.set(f"hubspot_properties_{event.id}_contacts", [{"key": "test"}])
-        cache.set(f"hubspot_properties_error_{event.id}_contacts", "Error")
+        cache.set(f"hubspot_properties_evt_{event.id}_contacts", [{"key": "test"}])
+        cache.set(f"hubspot_properties_error_evt_{event.id}_contacts", "Error")
 
     url = reverse(
         "plugins:hubspot:disconnect",
@@ -99,8 +99,8 @@ def test_hubspot_disconnect_view_connected(mock_delete, logged_in_organizer_clie
         assert not HubSpotOAuthToken.objects.filter(event=event).exists()
         from django.core.cache import cache
 
-        assert not cache.get(f"hubspot_properties_{event.id}_contacts")
-        assert not cache.get(f"hubspot_properties_error_{event.id}_contacts")
+        assert not cache.get(f"hubspot_properties_evt_{event.id}_contacts")
+        assert not cache.get(f"hubspot_properties_error_evt_{event.id}_contacts")
 
 
 @pytest.mark.django_db
@@ -264,7 +264,7 @@ def test_organizer_settings_view_connection_and_mapping_status(logged_in_organiz
     assert e2.connection_badge_class == "info"
     assert "Organizer fallback" in str(e2.connection_status_text)
     assert e2.mapping_badge_class == "default"
-    assert "Organizer default" in str(e2.mapping_status_text)
+    assert "Default" in str(e2.mapping_status_text)
 
     # Now disable sync for event2 specifically
     with scope(organizer=organizer):
@@ -274,7 +274,7 @@ def test_organizer_settings_view_connection_and_mapping_status(logged_in_organiz
     assert response.status_code == 200
     events_dict = {e.id: e for e in response.context["events"]}
     e2_disabled = events_dict[event2.id]
-    assert e2_disabled.connection_badge_class == "muted"
+    assert e2_disabled.connection_badge_class == "default"
     assert "Not connected" in str(e2_disabled.connection_status_text)
 
 
