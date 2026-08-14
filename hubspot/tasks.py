@@ -653,21 +653,39 @@ def recovery_sweep_task(event_id: int):
 
     order_ids_to_sync = set()
 
+    # Maximum orders enqueued per sweep to avoid thundering-herd on large backlogs.
+    # The sweep runs every 15 minutes, so the backlog drains gradually.
+    RECOVERY_SWEEP_MAX_ORDERS = 500
+
     with scope(organizer=event.organizer):
-        # 1. Failed syncs — find HubSpotObjectMappings whose latest SyncLog is FAILED
+        from django.contrib.contenttypes.models import ContentType
+
         from .sync_logic import get_unresolved_failed_logs, get_unsynced_querysets
 
-        for entry in get_unresolved_failed_logs(event):
-            mapping = HubSpotObjectMapping.objects.filter(id=entry["object_mapping_id"]).first()
-            if not mapping:
-                continue
-            source_obj = mapping.content_object
-            if source_obj is None:
-                continue
-            if isinstance(source_obj, Order):
-                order_ids_to_sync.add(source_obj.id)
-            elif isinstance(source_obj, OrderPosition):
-                order_ids_to_sync.add(source_obj.order_id)
+        order_ct_id = ContentType.objects.get_for_model(Order).id
+        position_ct_id = ContentType.objects.get_for_model(OrderPosition).id
+
+        # 1. Failed syncs — resolve order IDs directly from object_id/content_type_id
+        #    without hitting content_object (GenericForeignKey), which would trigger
+        #    an extra DB query per mapping row.
+        failed_mapping_ids = [entry["object_mapping_id"] for entry in get_unresolved_failed_logs(event)]
+        failed_mappings = HubSpotObjectMapping.objects.filter(id__in=failed_mapping_ids).values(
+            "content_type_id", "object_id"
+        )
+        for row in failed_mappings:
+            if row["content_type_id"] == order_ct_id:
+                order_ids_to_sync.add(row["object_id"])
+            elif row["content_type_id"] == position_ct_id:
+                # object_id here is an OrderPosition PK; resolve to order_id in bulk below
+                order_ids_to_sync.add(row["object_id"])  # temporarily holds position IDs
+
+        # Resolve any OrderPosition IDs collected above into their parent order IDs
+        position_ids = {row["object_id"] for row in failed_mappings if row["content_type_id"] == position_ct_id}
+        if position_ids:
+            order_ids_to_sync -= position_ids  # remove raw position IDs
+            order_ids_to_sync.update(
+                OrderPosition.objects.filter(id__in=position_ids).values_list("order_id", flat=True)
+            )
 
         # 2. Never-synced orders — paid orders with no HubSpotObjectMapping
         for _mapping, _content_type, qs in get_unsynced_querysets(event):
@@ -681,6 +699,12 @@ def recovery_sweep_task(event_id: int):
 
     enqueued = 0
     for order_id in order_ids_to_sync:
+        if enqueued >= RECOVERY_SWEEP_MAX_ORDERS:
+            logger.info(
+                f"Recovery sweep for event {event_id}: hit cap of {RECOVERY_SWEEP_MAX_ORDERS}, "
+                f"{len(order_ids_to_sync) - enqueued} orders deferred to next sweep."
+            )
+            break
         lock_key = f"hubspot_recovery_lock_{order_id}"
         if cache.add(lock_key, "1", timeout=300):
             sync_order_to_hubspot.apply_async(args=[order_id, event_id])

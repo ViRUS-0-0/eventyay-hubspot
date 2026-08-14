@@ -184,8 +184,8 @@ def recovery_sweep_hubspot_sync(sender, **kwargs):
 def _recovery_sweep_inner(sender, **kwargs):
     from .tasks import recovery_sweep_task
 
-    for token in HubSpotOAuthToken.objects.all():
-        recovery_sweep_task.apply_async(args=[token.event_id])
+    for event_id in HubSpotOAuthToken.objects.values_list("event_id", flat=True):
+        recovery_sweep_task.apply_async(args=[event_id])
 
 
 try:
