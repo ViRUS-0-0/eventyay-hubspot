@@ -31,6 +31,12 @@ from .models import (
     SyncLog,
     SyncStatus,
 )
+from .services import (
+    bootstrap_event_hubspot,
+    get_valid_hubspot_token,
+    is_auto_sync_enabled,
+    is_sync_enabled,
+)
 from .tasks import sync_order_to_hubspot
 
 
@@ -80,12 +86,6 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
         return
 
     with scope(organizer=order.event.organizer):
-        from .services import (
-            get_valid_hubspot_token,
-            is_auto_sync_enabled,
-            is_sync_enabled,
-        )
-
         if not is_sync_enabled(order.event):
             return
         if not get_valid_hubspot_token(order.event):
@@ -288,7 +288,5 @@ def control_order_info(sender, request, order, **kwargs):
 def on_event_created(sender, instance, created, **kwargs):
     if not created:
         return
-
-    from .services import bootstrap_event_hubspot
 
     bootstrap_event_hubspot(instance)
