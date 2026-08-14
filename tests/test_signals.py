@@ -70,3 +70,54 @@ def test_enqueue_sync_auto_sync_disabled(mock_apply, event, order, django_captur
         _enqueue_hubspot_sync(None, order)
     mock_apply.assert_not_called()
     assert SyncLog.objects.filter(event=event, status=SyncStatus.PENDING).exists()
+
+
+@pytest.mark.django_db
+def test_event_created_bootstraps_hubspot_when_organizer_enabled(organizer):
+    from eventyay.base.models import Event
+
+    from hubspot.models import OrganizerHubSpotSettings
+
+    OrganizerHubSpotSettings.objects.create(organizer=organizer, sync_enabled=True)
+
+    event = Event.objects.create(
+        organizer=organizer,
+        name="Test Event",
+        slug="test-event",
+        date_from=now(),
+        live=False,
+    )
+
+    settings = HubSpotEventSettings.objects.filter(event=event).first()
+    assert settings is not None
+    assert settings.sync_enabled is True
+    assert "hubspot" in event.get_plugins()
+
+
+@pytest.mark.django_db
+def test_event_created_skips_hubspot_when_organizer_disabled(organizer):
+    from eventyay.base.models import Event
+
+    # OrganizerHubSpotSettings doesn't exist
+    event1 = Event.objects.create(
+        organizer=organizer,
+        name="Test Event 1",
+        slug="test-event-1",
+        date_from=now(),
+        live=False,
+    )
+    assert HubSpotEventSettings.objects.filter(event=event1).first() is None
+
+    # OrganizerHubSpotSettings exists but disabled
+    from hubspot.models import OrganizerHubSpotSettings
+
+    OrganizerHubSpotSettings.objects.create(organizer=organizer, sync_enabled=False)
+
+    event2 = Event.objects.create(
+        organizer=organizer,
+        name="Test Event 2",
+        slug="test-event-2",
+        date_from=now(),
+        live=False,
+    )
+    assert HubSpotEventSettings.objects.filter(event=event2).first() is None

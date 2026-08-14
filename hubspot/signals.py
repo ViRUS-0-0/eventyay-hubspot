@@ -3,14 +3,14 @@ from datetime import timedelta
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models.signals import post_delete
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from django.template.loader import get_template
 from django.urls import resolve, reverse
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django_scopes import scope
-from eventyay.base.models import Order, OrderPosition
+from eventyay.base.models import Event, Order, OrderPosition
 from eventyay.base.signals import (
     order_canceled,
     order_paid,
@@ -282,3 +282,13 @@ def control_order_info(sender, request, order, **kwargs):
         "can_sync": can_sync,
     }
     return template.render(ctx, request=request)
+
+
+@receiver(post_save, sender=Event, dispatch_uid="hubspot_event_created")
+def on_event_created(sender, instance, created, **kwargs):
+    if not created:
+        return
+
+    from .services import bootstrap_event_hubspot
+
+    bootstrap_event_hubspot(instance)
