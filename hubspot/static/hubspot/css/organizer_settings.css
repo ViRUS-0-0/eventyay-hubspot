@@ -3,3 +3,15 @@
     margin-top: 5px;
     font-weight: bold;
 }
+
+.activity-log-form {
+    margin-bottom: 20px;
+}
+
+.activity-log-label {
+    margin-right: 10px;
+}
+
+.activity-log-select {
+    min-width: 300px;
+}

@@ -9,11 +9,17 @@ from django_scopes import scope
 from eventyay.base.models import Event, Organizer
 
 from hubspot.models import (
+    AuditAction,
+    AuditLog,
     HubSpotEventSettings,
     HubSpotOAuthToken,
     ObjectTypeMapping,
     OrganizerHubSpotOAuthToken,
     OrganizerHubSpotSettings,
+    SyncAction,
+    SyncDirection,
+    SyncLog,
+    SyncStatus,
 )
 
 
@@ -363,3 +369,128 @@ def test_organizer_settings_view_your_events_panel_visibility(logged_in_organize
     assert response.status_code == 200
     assert b"Your Events" in response.content
     assert b"Sync Enabled" in response.content
+
+
+@pytest.mark.django_db
+def test_organizer_activity_logs_shows_5_entries(logged_in_organizer_client, organizer, event, settings):
+    settings.SITE_URL = "https://testserver"
+    with scope(organizer=organizer):
+        OrganizerHubSpotSettings.objects.update_or_create(organizer=organizer, defaults={"sync_enabled": True})
+        for i in range(5):
+            SyncLog.objects.create(
+                event=event,
+                action=SyncAction.CREATE,
+                direction=SyncDirection.PUSH,
+                status=SyncStatus.SUCCESS,
+            )
+        for i in range(3):
+            AuditLog.objects.create(
+                organizer=organizer,
+                event=event,
+                action=AuditAction.MAPPING_UPDATED,
+                ip_address="127.0.0.1",
+            )
+
+    url = reverse("plugins:hubspot:org_hubspot", kwargs={"organizer": organizer.slug})
+    response = logged_in_organizer_client.get(url + f"?event={event.slug}")
+    assert response.status_code == 200
+    assert len(response.context["recent_activities"]) == 5
+
+
+@pytest.mark.django_db
+def test_organizer_activity_logs_scoped_to_selected_event(logged_in_organizer_client, organizer, event, settings):
+    settings.SITE_URL = "https://testserver"
+    with scope(organizer=organizer):
+        OrganizerHubSpotSettings.objects.update_or_create(organizer=organizer, defaults={"sync_enabled": True})
+        event_b = Event.objects.create(
+            organizer=organizer,
+            name="Event B",
+            slug="event-b",
+            date_from=now(),
+            date_to=now() + timedelta(days=1),
+            currency="USD",
+            live=True,
+            plugins="hubspot",
+        )
+        SyncLog.objects.create(
+            event=event,
+            action=SyncAction.CREATE,
+            direction=SyncDirection.PUSH,
+            status=SyncStatus.SUCCESS,
+        )
+        AuditLog.objects.create(
+            organizer=organizer,
+            event=event,
+            action=AuditAction.MAPPING_UPDATED,
+            ip_address="127.0.0.1",
+        )
+        SyncLog.objects.create(
+            event=event_b,
+            action=SyncAction.UPDATE,
+            direction=SyncDirection.PUSH,
+            status=SyncStatus.FAILED,
+        )
+
+    url = reverse("plugins:hubspot:org_hubspot", kwargs={"organizer": organizer.slug})
+    response = logged_in_organizer_client.get(url + f"?event={event.slug}")
+    assert response.status_code == 200
+    activities = response.context["recent_activities"]
+    assert len(activities) == 2
+
+
+@pytest.mark.django_db
+def test_organizer_activity_logs_view_more_link(logged_in_organizer_client, organizer, event, settings):
+    settings.SITE_URL = "https://testserver"
+    with scope(organizer=organizer):
+        OrganizerHubSpotSettings.objects.update_or_create(organizer=organizer, defaults={"sync_enabled": True})
+        AuditLog.objects.create(
+            organizer=organizer,
+            event=event,
+            action=AuditAction.MAPPING_UPDATED,
+            ip_address="127.0.0.1",
+        )
+
+    url = reverse("plugins:hubspot:org_hubspot", kwargs={"organizer": organizer.slug})
+    response = logged_in_organizer_client.get(url + f"?event={event.slug}")
+    assert response.status_code == 200
+    expected_href = (
+        reverse(
+            "plugins:hubspot:logs",
+            kwargs={"organizer": organizer.slug, "event": event.slug},
+        )
+        + "?from=org"
+    )
+    assert expected_href in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_organizer_activity_logs_only_organizer_events(logged_in_organizer_client, organizer, event, settings):
+    settings.SITE_URL = "https://testserver"
+    with scope(organizer=organizer):
+        OrganizerHubSpotSettings.objects.update_or_create(organizer=organizer, defaults={"sync_enabled": True})
+
+    other_org = Organizer.objects.create(name="Other Org", slug="other-org-2")
+    with scope(organizer=other_org):
+        other_event = Event.objects.create(
+            organizer=other_org,
+            name="Other Event",
+            slug="other-event",
+            date_from=now(),
+            date_to=now() + timedelta(days=1),
+            currency="USD",
+            live=True,
+            plugins="hubspot",
+        )
+        SyncLog.objects.create(
+            event=other_event,
+            action=SyncAction.CREATE,
+            direction=SyncDirection.PUSH,
+            status=SyncStatus.SUCCESS,
+        )
+
+    url = reverse("plugins:hubspot:org_hubspot", kwargs={"organizer": organizer.slug})
+    response = logged_in_organizer_client.get(url + f"?event={other_event.slug}")
+    assert response.status_code == 200
+    assert "recent_activities" not in response.context
+
+    assert "selected_event" not in response.context

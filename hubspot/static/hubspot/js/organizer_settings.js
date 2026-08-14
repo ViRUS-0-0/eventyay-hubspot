@@ -198,3 +198,9 @@ document.addEventListener("DOMContentLoaded", function() {
         addBtn.click();
     }
 });
+document.addEventListener("DOMContentLoaded", function() {
+    var sel = document.getElementById('activity-log-event-select');
+    if (sel) sel.addEventListener('change', function() {
+        document.getElementById('activity-log-event-form').requestSubmit();
+    });
+});
