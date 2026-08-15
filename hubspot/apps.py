@@ -34,10 +34,13 @@ class EventyayHubspotPluginApp(PluginConfig):
         project_root = getattr(settings, "PROJECT_ROOT", plugin_dir)
         env_hubspot_path = plugin_dir / ".env.hubspot"
         eventyay_env_dev_path = project_root.parent / ".env.dev"
+        eventyay_env_path = project_root.parent / ".env"
 
         if env_hubspot_path.exists():
             load_dotenv(dotenv_path=env_hubspot_path)
         elif eventyay_env_dev_path.exists():
             load_dotenv(dotenv_path=eventyay_env_dev_path)
+        elif eventyay_env_path.exists():
+            load_dotenv(dotenv_path=eventyay_env_path)
         elif (plugin_dir / ".env").exists():
             load_dotenv(dotenv_path=plugin_dir / ".env")
