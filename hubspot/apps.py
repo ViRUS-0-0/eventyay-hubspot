@@ -28,13 +28,16 @@ class EventyayHubspotPluginApp(PluginConfig):
 
     def ready(self):
         from . import signals  # NOQA
+        from django.conf import settings
 
-        # Load environment variables from eventyay-hubspot/.env.hubspot or .env if they exist
         plugin_dir = Path(__file__).resolve().parent.parent
+        project_root = getattr(settings, "PROJECT_ROOT", plugin_dir)
         env_hubspot_path = plugin_dir / ".env.hubspot"
-        env_path = plugin_dir / ".env"
+        eventyay_env_dev_path = project_root.parent / ".env.dev"
 
         if env_hubspot_path.exists():
             load_dotenv(dotenv_path=env_hubspot_path)
-        elif env_path.exists():
-            load_dotenv(dotenv_path=env_path)
+        elif eventyay_env_dev_path.exists():
+            load_dotenv(dotenv_path=eventyay_env_dev_path)
+        elif (plugin_dir / ".env").exists():
+            load_dotenv(dotenv_path=plugin_dir / ".env")
