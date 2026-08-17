@@ -203,4 +203,12 @@ document.addEventListener("DOMContentLoaded", function() {
     if (sel) sel.addEventListener('change', function() {
         document.getElementById('activity-log-event-form').requestSubmit();
     });
+
+    var syncToggle = document.getElementById('sync-enabled-toggle');
+    var toggleForm = document.getElementById('hubspot-toggle-form');
+    if (syncToggle && toggleForm) {
+        syncToggle.addEventListener('change', function() {
+            toggleForm.submit();
+        });
+    }
 });

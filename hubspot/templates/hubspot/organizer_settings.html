@@ -21,7 +21,7 @@
                 <input type="hidden" name="form_type" value="toggle">
                 <div class="toggle-wrapper organizer-toggle-wrapper">
                     <label class="hubspot-toggle">
-                        <input type="checkbox" name="sync_enabled" {% if sync_enabled %}checked{% endif %} onchange="document.getElementById('hubspot-toggle-form').submit();">
+                        <input type="checkbox" id="sync-enabled-toggle" name="sync_enabled" {% if sync_enabled %}checked{% endif %}>
                         <span class="slider"></span>
                     </label>
                 </div>
