@@ -540,3 +540,25 @@ def check_and_clear_mapping_conflict(event):
         if conflict_found != settings.has_mapping_conflict:
             settings.has_mapping_conflict = conflict_found
             settings.save(update_fields=["has_mapping_conflict"])
+
+
+def bootstrap_event_hubspot(event):
+    """
+    Bootstraps HubSpot settings for a newly created event if the organizer has HubSpot sync enabled.
+    """
+    with scope(organizer=event.organizer):
+        try:
+            org_settings = OrganizerHubSpotSettings.objects.get(organizer=event.organizer)
+        except OrganizerHubSpotSettings.DoesNotExist:
+            return
+
+        if not org_settings.sync_enabled:
+            return
+
+        HubSpotEventSettings.objects.get_or_create(event=event, defaults={"sync_enabled": True})
+
+        plugins = event.get_plugins()
+        if "hubspot" not in plugins:
+            event.enable_plugin("hubspot")
+
+        apply_default_mappings_to_all_events(event.organizer)

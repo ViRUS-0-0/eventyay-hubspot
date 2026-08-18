@@ -1406,14 +1406,6 @@ class OrganizerHubSpotDisconnectView(OrganizerPermissionRequiredMixin, View):
 
         with scope(organizer=request.organizer):
             token.delete()
-            OrganizerHubSpotSettings.objects.filter(organizer=request.organizer).update(sync_enabled=False)
-
-            events_with_tokens = HubSpotOAuthToken.objects.filter(event__organizer=request.organizer).values_list(
-                "event_id", flat=True
-            )
-            HubSpotEventSettings.objects.filter(event__organizer=request.organizer).exclude(
-                event_id__in=events_with_tokens
-            ).update(sync_enabled=False)
 
             AuditLog.objects.create(
                 organizer=request.organizer,
