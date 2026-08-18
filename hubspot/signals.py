@@ -1,5 +1,7 @@
+from collections import OrderedDict
 from datetime import timedelta
 
+from django import forms
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.db import transaction
@@ -16,6 +18,7 @@ from eventyay.base.signals import (
     order_paid,
     order_placed,
     periodic_task,
+    register_global_settings,
 )
 from eventyay.control.signals import nav_event, nav_organizer, order_info
 
@@ -38,6 +41,38 @@ from .services import (
     is_sync_enabled,
 )
 from .tasks import sync_order_to_hubspot
+
+
+@receiver(register_global_settings, dispatch_uid="hubspot_global_settings")
+def register_global_settings_receiver(sender, **kwargs):
+    return OrderedDict(
+        [
+            (
+                "hubspot_client_id",
+                forms.CharField(
+                    label=_("Client ID"),
+                    required=False,
+                ),
+            ),
+            (
+                "hubspot_client_secret",
+                forms.CharField(
+                    label=_("Client Secret"),
+                    required=False,
+                    widget=forms.PasswordInput(render_value=True),
+                ),
+            ),
+            (
+                "hubspot_property_sync_ttl_minutes",
+                forms.IntegerField(
+                    label=_("Property Sync Cache TTL (minutes)"),
+                    required=False,
+                    min_value=1,
+                    initial=10,
+                ),
+            ),
+        ]
+    )
 
 
 @receiver(nav_event, dispatch_uid="hubspot_nav")

@@ -9,6 +9,7 @@ from django.db import transaction
 from django.utils.timezone import now
 from django_scopes import scope
 from eventyay.base.models import Order, OrderPosition
+from eventyay.base.settings import GlobalSettingsObject
 
 from .models import (
     AuditAction,
@@ -48,9 +49,12 @@ def get_hubspot_properties(event, object_type: str, force_sync: bool = False, or
     error_key = f"hubspot_properties_error_{prefix}_{object_type}"
     rate_limit_key = f"hubspot_auto_sync_limit_{prefix}_{object_type}"
 
+    gs = GlobalSettingsObject()
     try:
-        ttl_minutes = int(os.environ.get("HUBSPOT_PROPERTY_SYNC_TTL_MINUTES", "10"))
-    except ValueError:
+        ttl_minutes = int(
+            gs.settings.hubspot_property_sync_ttl_minutes or os.environ.get("HUBSPOT_PROPERTY_SYNC_TTL_MINUTES", "10")
+        )
+    except (ValueError, TypeError):
         ttl_minutes = 10
 
     if force_sync:
@@ -198,12 +202,13 @@ def _refresh_token_record(token_obj, event_or_organizer, is_organizer=False):
     organizer = event_or_organizer if is_organizer else event_or_organizer.organizer
 
     try:
+        gs = GlobalSettingsObject()
         response = requests.post(
             "https://api.hubapi.com/oauth/v1/token",
             data={
                 "grant_type": "refresh_token",
-                "client_id": os.environ.get("HUBSPOT_CLIENT_ID", ""),
-                "client_secret": os.environ.get("HUBSPOT_CLIENT_SECRET", ""),
+                "client_id": gs.settings.hubspot_client_id or os.environ.get("HUBSPOT_CLIENT_ID", ""),
+                "client_secret": gs.settings.hubspot_client_secret or os.environ.get("HUBSPOT_CLIENT_SECRET", ""),
                 "refresh_token": token_obj.refresh_token,
             },
             timeout=15,

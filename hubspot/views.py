@@ -17,6 +17,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView, TemplateView, View
 from django_scopes import scope
 from eventyay.base.models import Event, Order, OrderPosition, Organizer
+from eventyay.base.settings import GlobalSettingsObject
 from eventyay.control.permissions import (
     EventPermissionRequiredMixin,
     OrganizerPermissionRequiredMixin,
@@ -69,6 +70,11 @@ from .sync_logic import (
 )
 from .tasks import sync_all_mappings_task, sync_order_to_hubspot
 from .utils import get_hubspot_activity_logs
+
+
+HUBSPOT_OAUTH_SCOPES = (
+    "oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write"
+)
 
 
 def get_client_ip(request):
@@ -194,18 +200,13 @@ class EventHubSpotConnectView(EventPermissionRequiredMixin, View):
         # Pass the organizer and event slugs inside state parameter
         state = f"{state_token}:{request.event.organizer.slug}:{request.event.slug}"
 
-        redirect_uri = os.environ.get("HUBSPOT_REDIRECT_URI", "")
-        if not redirect_uri:
-            redirect_uri = request.build_absolute_uri(reverse("plugins:hubspot:callback"))
+        gs = GlobalSettingsObject()
+        redirect_uri = request.build_absolute_uri(reverse("plugins:hubspot:callback"))
 
         params = {
-            "client_id": os.environ.get("HUBSPOT_CLIENT_ID", ""),
+            "client_id": gs.settings.hubspot_client_id or os.environ.get("HUBSPOT_CLIENT_ID", ""),
             "redirect_uri": redirect_uri,
-            "scope": os.environ.get(
-                "HUBSPOT_SCOPES",
-                "oauth crm.objects.contacts.read crm.objects.contacts.write "
-                "crm.objects.deals.read crm.objects.deals.write",
-            ),
+            "scope": HUBSPOT_OAUTH_SCOPES,
             "state": state,
         }
         url = "https://app.hubspot.com/oauth/authorize?" + urllib.parse.urlencode(params)
@@ -285,16 +286,15 @@ class EventHubSpotCallbackView(View):
             ):
                 raise PermissionDenied(_("You do not have permission to view this content."))
 
-        redirect_uri = os.environ.get("HUBSPOT_REDIRECT_URI", "")
-        if not redirect_uri:
-            redirect_uri = request.build_absolute_uri(reverse("plugins:hubspot:callback"))
+        gs = GlobalSettingsObject()
+        redirect_uri = request.build_absolute_uri(reverse("plugins:hubspot:callback"))
 
         response = requests.post(
             "https://api.hubapi.com/oauth/v1/token",
             data={
                 "grant_type": "authorization_code",
-                "client_id": os.environ.get("HUBSPOT_CLIENT_ID", ""),
-                "client_secret": os.environ.get("HUBSPOT_CLIENT_SECRET", ""),
+                "client_id": gs.settings.hubspot_client_id or os.environ.get("HUBSPOT_CLIENT_ID", ""),
+                "client_secret": gs.settings.hubspot_client_secret or os.environ.get("HUBSPOT_CLIENT_SECRET", ""),
                 "redirect_uri": redirect_uri,
                 "code": code,
             },
@@ -337,11 +337,7 @@ class EventHubSpotCallbackView(View):
                         "expires_at": expires_at,
                         "hub_id": hub_id,
                         "hub_name": hub_name,
-                        "scope": os.environ.get(
-                            "HUBSPOT_SCOPES",
-                            "oauth crm.objects.contacts.read crm.objects.contacts.write "
-                            "crm.objects.deals.read crm.objects.deals.write",
-                        ),
+                        "scope": HUBSPOT_OAUTH_SCOPES,
                     },
                 )
 
@@ -366,11 +362,7 @@ class EventHubSpotCallbackView(View):
                         "expires_at": expires_at,
                         "hub_id": hub_id,
                         "hub_name": hub_name,
-                        "scope": os.environ.get(
-                            "HUBSPOT_SCOPES",
-                            "oauth crm.objects.contacts.read crm.objects.contacts.write "
-                            "crm.objects.deals.read crm.objects.deals.write",
-                        ),
+                        "scope": HUBSPOT_OAUTH_SCOPES,
                     },
                 )
 
@@ -1358,18 +1350,13 @@ class OrganizerHubSpotConnectView(OrganizerPermissionRequiredMixin, View):
         # Pass only the organizer slug inside state parameter (2 segments total)
         state = f"{state_token}:{request.organizer.slug}"
 
-        redirect_uri = os.environ.get("HUBSPOT_REDIRECT_URI", "")
-        if not redirect_uri:
-            redirect_uri = request.build_absolute_uri(reverse("plugins:hubspot:callback"))
+        gs = GlobalSettingsObject()
+        redirect_uri = request.build_absolute_uri(reverse("plugins:hubspot:callback"))
 
         params = {
-            "client_id": os.environ.get("HUBSPOT_CLIENT_ID", ""),
+            "client_id": gs.settings.hubspot_client_id or os.environ.get("HUBSPOT_CLIENT_ID", ""),
             "redirect_uri": redirect_uri,
-            "scope": os.environ.get(
-                "HUBSPOT_SCOPES",
-                "oauth crm.objects.contacts.read crm.objects.contacts.write "
-                "crm.objects.deals.read crm.objects.deals.write",
-            ),
+            "scope": HUBSPOT_OAUTH_SCOPES,
             "state": state,
         }
         url = "https://app.hubspot.com/oauth/authorize?" + urllib.parse.urlencode(params)
