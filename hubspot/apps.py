@@ -29,18 +29,27 @@ class EventyayHubspotPluginApp(PluginConfig):
     def ready(self):
         from . import signals  # NOQA
         from django.conf import settings
+        import logging
+
+        logger = logging.getLogger(__name__)
 
         plugin_dir = Path(__file__).resolve().parent.parent
         project_root = getattr(settings, "PROJECT_ROOT", plugin_dir)
-        env_hubspot_path = plugin_dir / ".env.hubspot"
-        eventyay_env_dev_path = project_root.parent / ".env.dev"
-        eventyay_env_path = project_root.parent / ".env"
+        env_paths = [
+            plugin_dir / ".env.hubspot",
+            project_root / ".env",
+            Path.cwd() / ".env",
+            project_root.parent / ".env.dev",
+            project_root.parent / ".env",
+            plugin_dir / ".env",
+        ]
 
-        if env_hubspot_path.exists():
-            load_dotenv(dotenv_path=env_hubspot_path)
-        elif eventyay_env_dev_path.exists():
-            load_dotenv(dotenv_path=eventyay_env_dev_path)
-        elif eventyay_env_path.exists():
-            load_dotenv(dotenv_path=eventyay_env_path)
-        elif (plugin_dir / ".env").exists():
-            load_dotenv(dotenv_path=plugin_dir / ".env")
+        env_loaded = False
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(dotenv_path=env_path)
+                logger.info(f"HubSpot plugin loaded environment variables from: {env_path}")
+                env_loaded = True
+
+        if not env_loaded:
+            logger.error("HubSpot plugin: No .env file found.")

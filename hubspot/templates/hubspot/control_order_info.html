@@ -35,7 +35,7 @@
                         {% trans "Sync now" %}
                     </button>
                     {% elif sync_needed %}
-                    <button type="button" class="btn btn-primary sync-now-btn" onclick="this.innerHTML='{% trans "Queued" %}'; this.disabled=true; this.form.submit();">
+                    <button type="submit" class="btn btn-primary sync-now-btn">
                         {% trans "Sync now" %}
                     </button>
                     {% else %}
