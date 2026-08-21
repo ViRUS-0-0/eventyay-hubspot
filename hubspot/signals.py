@@ -9,14 +9,14 @@ from django.template.loader import get_template
 from django.urls import resolve, reverse
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
-from django_scopes import scope
-from eventyay.base.models import Order, OrderPosition
+from django_scopes import scope, scopes_disabled
+from eventyay.base.models import Event, Order, OrderPosition
 from eventyay.base.signals import (
     order_canceled,
     order_paid,
     order_placed,
-    periodic_task,
 )
+from eventyay.common.signals import periodic_task
 from eventyay.control.signals import nav_event, nav_organizer, order_info
 
 from .models import (
@@ -114,7 +114,7 @@ def _enqueue_hubspot_sync(sender, order, **kwargs):
     def enqueue_task():
         # Deduplicate multiple signals for the same order within a short window
         cache_key = f"hubspot_sync_enqueued_{order.id}"
-        if cache.add(cache_key, "1", timeout=5):
+        if not cache.get(f"hubspot_sync_in_progress_{order.id}") and cache.add(cache_key, "1", timeout=5):
             sync_order_to_hubspot.apply_async(args=[order.id, order.event.id], countdown=5)
 
     transaction.on_commit(enqueue_task)
@@ -172,8 +172,9 @@ def clear_audit_logs(sender, **kwargs):
     days = 180
 
     threshold = now() - timedelta(days=days)
-    AuditLog.objects.filter(created_at__lt=threshold).delete()
-    SyncLog.objects.filter(created_at__lt=threshold).delete()
+    with scopes_disabled():
+        AuditLog.objects.filter(created_at__lt=threshold).delete()
+        SyncLog.objects.filter(created_at__lt=threshold).delete()
 
 
 @receiver(periodic_task, dispatch_uid="hubspot_recovery_sweep")
@@ -182,10 +183,15 @@ def recovery_sweep_hubspot_sync(sender, **kwargs):
 
 
 def _recovery_sweep_inner(sender, **kwargs):
+    from .services import is_sync_enabled
     from .tasks import recovery_sweep_task
 
-    for event_id in HubSpotOAuthToken.objects.values_list("event_id", flat=True):
-        recovery_sweep_task.apply_async(args=[event_id])
+    with scopes_disabled():
+        events = list(Event.objects.all())
+    for event in events:
+        with scope(organizer=event.organizer):
+            if is_sync_enabled(event):
+                recovery_sweep_task.apply_async(args=[event.id])
 
 
 try:

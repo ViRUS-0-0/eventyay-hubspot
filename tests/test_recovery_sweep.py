@@ -121,8 +121,8 @@ def test_sweep_twice_no_duplicates(mock_apply, connected_event, order_mapping, f
 @pytest.mark.django_db
 @mock.patch("hubspot.tasks.sync_order_to_hubspot.apply_async")
 def test_order_already_syncing_is_skipped(mock_apply, connected_event, order_mapping, field_mapping, paid_order):
-    """If the recovery lock is already held, the sweep skips that order."""
-    cache.set(f"hubspot_recovery_lock_{paid_order.id}", "1", timeout=300)
+    """If the in-progress lock is already held, the sweep skips that order."""
+    cache.set(f"hubspot_sync_in_progress_{paid_order.id}", "1", timeout=600)
 
     recovery_sweep_task(connected_event.id)
 
@@ -207,3 +207,171 @@ def test_already_synced_order_is_not_requeued(mock_apply, connected_event, order
     recovery_sweep_task(connected_event.id)
 
     mock_apply.assert_not_called()
+
+
+# --- Bug 1: organizer-connected events ---
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.recovery_sweep_task.apply_async")
+def test_organizer_connected_event_is_dispatched(mock_apply, event, organizer):
+    """Event with no HubSpotOAuthToken but an organizer-level token gets dispatched by the sweep signal."""
+    from hubspot.models import OrganizerHubSpotOAuthToken, OrganizerHubSpotSettings
+    from hubspot.signals import _recovery_sweep_inner
+
+    OrganizerHubSpotOAuthToken.objects.create(
+        organizer=organizer,
+        access_token="org_token",
+        refresh_token="org_refresh",
+        expires_at=now() + datetime.timedelta(hours=1),
+    )
+    OrganizerHubSpotSettings.objects.create(organizer=organizer, sync_enabled=True)
+
+    _recovery_sweep_inner(sender=None)
+
+    mock_apply.assert_called_once_with(args=[event.id])
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.recovery_sweep_task.apply_async")
+def test_event_only_token_still_dispatched(mock_apply, connected_event):
+    """Event with a direct HubSpotOAuthToken (original behavior) still gets dispatched."""
+    from hubspot.signals import _recovery_sweep_inner
+
+    _recovery_sweep_inner(sender=None)
+
+    mock_apply.assert_called_once_with(args=[connected_event.id])
+
+
+# --- Bug 2: in-progress lock lifecycle ---
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.sync_order_to_hubspot.apply_async")
+def test_in_progress_lock_blocks_sweep(mock_apply, connected_event, order_mapping, field_mapping, paid_order):
+    """Sweep skips an order whose hubspot_sync_in_progress_* lock is held."""
+    cache.set(f"hubspot_sync_in_progress_{paid_order.id}", "1", timeout=600)
+
+    recovery_sweep_task(connected_event.id)
+
+    mock_apply.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks._sync_single_object")
+def test_in_progress_lock_released_after_success(mock_sync, connected_event, order_mapping, paid_order):
+    """In-progress lock is deleted when sync_order_to_hubspot completes successfully."""
+    mock_sync.return_value = None  # no-op sync
+
+    from hubspot.tasks import sync_order_to_hubspot
+
+    # Run the task directly (not via celery)
+    sync_order_to_hubspot(paid_order.id, connected_event.id)
+
+    assert cache.get(f"hubspot_sync_in_progress_{paid_order.id}") is None
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks._sync_single_object")
+def test_in_progress_lock_held_during_retry(mock_sync, connected_event, order_mapping, paid_order):
+    """In-progress lock is NOT released when the task calls self.retry() (still in-flight)."""
+    from hubspot.client import HubSpotTransientError
+    from hubspot.tasks import sync_order_to_hubspot
+
+    mock_sync.side_effect = HubSpotTransientError("transient")
+
+    # Catch the Retry exception that celery raises internally
+    try:
+        sync_order_to_hubspot(paid_order.id, connected_event.id)
+    except Exception:
+        pass  # celery raises Retry; we just verify the lock state below
+
+    # Lock must still be set — task is retrying, not done
+    assert cache.get(f"hubspot_sync_in_progress_{paid_order.id}") == "1"
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks._sync_single_object")
+def test_in_progress_lock_released_after_permanent_failure(mock_sync, connected_event, order_mapping, paid_order):
+    """In-progress lock is released even after a permanent failure (non-retry exit)."""
+    from hubspot.client import HubSpotPermanentError
+    from hubspot.tasks import sync_order_to_hubspot
+
+    mock_sync.side_effect = HubSpotPermanentError("permanent")
+
+    # In real execution _sync_single_object catches HubSpotPermanentError internally;
+    # here the mock raises it directly, so it propagates — but the finally still fires.
+    try:
+        sync_order_to_hubspot(paid_order.id, connected_event.id)
+    except HubSpotPermanentError:
+        pass
+
+    assert cache.get(f"hubspot_sync_in_progress_{paid_order.id}") is None
+
+
+# --- Bug 3: FAILED → SUCCESS regression ---
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.sync_order_to_hubspot.apply_async")
+def test_failed_then_succeeded_order_not_requeued(
+    mock_apply, connected_event, order_mapping, field_mapping, paid_order
+):
+    """Order with a FAILED log followed by a later SUCCESS log is NOT re-enqueued."""
+    ct = ContentType.objects.get_for_model(Order)
+    om = HubSpotObjectMapping.objects.create(
+        event=connected_event,
+        content_type=ct,
+        object_id=paid_order.id,
+        hubspot_object_type="contacts",
+        hubspot_object_id="hs_123",
+        last_synced_at=now(),
+    )
+    SyncLog.objects.create(
+        event=connected_event,
+        object_mapping=om,
+        action=SyncAction.CREATE,
+        direction=SyncDirection.PUSH,
+        status=SyncStatus.FAILED,
+        detail={"error": "Timeout"},
+    )
+    # Later successful retry — this should resolve the failure
+    SyncLog.objects.create(
+        event=connected_event,
+        object_mapping=om,
+        action=SyncAction.UPDATE,
+        direction=SyncDirection.PUSH,
+        status=SyncStatus.SUCCESS,
+    )
+
+    recovery_sweep_task(connected_event.id)
+
+    mock_apply.assert_not_called()
+
+
+# --- Cap behavior ---
+
+
+@pytest.mark.django_db
+@mock.patch("hubspot.tasks.sync_order_to_hubspot.apply_async")
+def test_cap_defers_excess_orders(mock_apply, connected_event, order_mapping, field_mapping):
+    """Orders beyond RECOVERY_SWEEP_MAX_ORDERS=500 are deferred, not dropped."""
+    # Create 502 paid orders with no mapping (never synced)
+    orders = [
+        Order(
+            event=connected_event,
+            code=f"CAP{i:04d}",
+            status=Order.STATUS_PAID,
+            email=f"cap{i}@test.com",
+            total=10.00,
+            locale="en",
+            datetime=now(),
+            expires=now() + datetime.timedelta(days=30),
+        )
+        for i in range(502)
+    ]
+    Order.objects.bulk_create(orders)
+
+    recovery_sweep_task(connected_event.id)
+
+    assert mock_apply.call_count == 500

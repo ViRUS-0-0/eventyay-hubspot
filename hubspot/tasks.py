@@ -309,57 +309,70 @@ def sync_order_to_hubspot(self, order_id: int, event_id: int):
             logger.info(f"No valid HubSpot token for event {event_id}. Skipping.")
             return
 
+        in_progress_key = f"hubspot_sync_in_progress_{order_id}"
+        if not cache.add(in_progress_key, "1", timeout=600):
+            logger.info(f"Order {order_id} already syncing; skipping duplicate.")
+            return
+
+        retrying = False
         try:
-            order = (
-                Order.objects.select_related("invoice_address")
-                .prefetch_related(
-                    "positions__product",
-                    "positions__voucher",
-                    "positions__answers__question",
+            try:
+                order = (
+                    Order.objects.select_related("invoice_address")
+                    .prefetch_related(
+                        "positions__product",
+                        "positions__voucher",
+                        "positions__answers__question",
+                    )
+                    .get(id=order_id, event=event)
                 )
-                .get(id=order_id, event=event)
-            )
-        except Order.DoesNotExist:
-            return
+            except Order.DoesNotExist:
+                return
 
-        if order.status != Order.STATUS_PAID:
-            logger.info(f"Order {order_id} is not paid (status: {order.status}). Skipping sync.")
-            return
+            if order.status != Order.STATUS_PAID:
+                logger.info(f"Order {order_id} is not paid (status: {order.status}). Skipping sync.")
+                return
 
-        active_mappings = ObjectTypeMapping.objects.filter(event=event)
-        if not active_mappings.exists():
-            logger.info(f"No active object mappings found for event {event_id}. Skipping sync for order {order_id}.")
-            # Clean up pending logs for this order
-            SyncLog.objects.filter(
-                event=event,
-                status=SyncStatus.PENDING,
-                detail__order_code=order.code,
-            ).delete()
-            return
+            active_mappings = ObjectTypeMapping.objects.filter(event=event)
+            if not active_mappings.exists():
+                logger.info(
+                    f"No active object mappings found for event {event_id}. Skipping sync for order {order_id}."
+                )
+                # Clean up pending logs for this order
+                SyncLog.objects.filter(
+                    event=event,
+                    status=SyncStatus.PENDING,
+                    detail__order_code=order.code,
+                ).delete()
+                return
 
-        try:
-            for object_mapping_config in active_mappings:
-                objects_to_sync = []
-                if object_mapping_config.eventyay_object_type == "order":
-                    objects_to_sync = [order]
-                elif object_mapping_config.eventyay_object_type == "order_position":
-                    objects_to_sync = list(order.positions.all())
+            try:
+                for object_mapping_config in active_mappings:
+                    objects_to_sync = []
+                    if object_mapping_config.eventyay_object_type == "order":
+                        objects_to_sync = [order]
+                    elif object_mapping_config.eventyay_object_type == "order_position":
+                        objects_to_sync = list(order.positions.all())
 
-                for obj in objects_to_sync:
-                    _sync_single_object(event, object_mapping_config, obj)
+                    for obj in objects_to_sync:
+                        _sync_single_object(event, object_mapping_config, obj)
 
-            # Clean up pending logs for this order
-            SyncLog.objects.filter(
-                event=event,
-                status=SyncStatus.PENDING,
-                detail__order_code=order.code,
-            ).delete()
-        except HubSpotTransientError as e:
-            delay = 2**self.request.retries
-            retry_after = getattr(e, "retry_after_seconds", None)
-            if retry_after:
-                delay = max(delay, retry_after)
-            raise self.retry(exc=e, countdown=delay)
+                # Clean up pending logs for this order
+                SyncLog.objects.filter(
+                    event=event,
+                    status=SyncStatus.PENDING,
+                    detail__order_code=order.code,
+                ).delete()
+            except HubSpotTransientError as e:
+                delay = 2**self.request.retries
+                retry_after = getattr(e, "retry_after_seconds", None)
+                if retry_after:
+                    delay = max(delay, retry_after)
+                retrying = True
+                raise self.retry(exc=e, countdown=delay)
+        finally:
+            if not retrying:
+                cache.delete(in_progress_key)
 
 
 def _sync_single_object(event: Event, config: ObjectTypeMapping, obj: Any):
@@ -626,6 +639,11 @@ def refresh_hubspot_properties_task(self, event_id: int | None, object_type: str
             cache.delete(lock_key)
             cache.delete(manual_sync_lock_key)
             raise
+    except Exception as e:
+        cache.set(error_key, str(e), timeout=3600)
+        cache.delete(lock_key)
+        cache.delete(manual_sync_lock_key)
+        raise
 
 
 @shared_task
@@ -705,10 +723,12 @@ def recovery_sweep_task(event_id: int):
                 f"{len(order_ids_to_sync) - enqueued} orders deferred to next sweep."
             )
             break
-        lock_key = f"hubspot_recovery_lock_{order_id}"
-        if cache.add(lock_key, "1", timeout=300):
-            sync_order_to_hubspot.apply_async(args=[order_id, event_id])
-            enqueued += 1
+        if not cache.get(f"hubspot_sync_in_progress_{order_id}"):
+            # sweep_queued key deduplicates consecutive sweeps before the task
+            # starts; in_progress key (set by the task itself) covers concurrent runs.
+            if cache.add(f"hubspot_sweep_queued_{order_id}", "1", timeout=900):
+                sync_order_to_hubspot.apply_async(args=[order_id, event_id])
+                enqueued += 1
 
     if enqueued:
         logger.info(f"Recovery sweep for event {event_id}: enqueued {enqueued} orders for sync.")
