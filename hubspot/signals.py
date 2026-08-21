@@ -20,7 +20,7 @@ from eventyay.base.signals import (
     periodic_task,
     register_global_settings,
 )
-from eventyay.control.signals import nav_event, nav_organizer, order_info
+from eventyay.control.signals import nav_event_settings, nav_organizer, order_info
 
 from .models import (
     AuditLog,
@@ -75,12 +75,12 @@ def register_global_settings_receiver(sender, **kwargs):
     )
 
 
-@receiver(nav_event, dispatch_uid="hubspot_nav")
+@receiver(nav_event_settings, dispatch_uid="hubspot_nav")
 def control_nav_import(sender, request=None, **kwargs):
     url = resolve(request.path_info)
     return [
         {
-            "label": _("Hubspot"),
+            "label": _("HubSpot Integration"),
             "url": reverse(
                 "plugins:hubspot:hubspot",
                 kwargs={
@@ -89,7 +89,6 @@ def control_nav_import(sender, request=None, **kwargs):
                 },
             ),
             "active": url.namespace == "plugins:hubspot" and url.url_name == "hubspot",
-            "icon": "bar-chart",
         }
     ]
 
