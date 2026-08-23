@@ -80,7 +80,7 @@ def control_nav_import(sender, request=None, **kwargs):
     url = resolve(request.path_info)
     return [
         {
-            "label": _("HubSpot Integration"),
+            "label": _("HubSpot"),
             "url": reverse(
                 "plugins:hubspot:hubspot",
                 kwargs={
