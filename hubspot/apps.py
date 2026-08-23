@@ -36,7 +36,10 @@ class EventyayHubspotPluginApp(PluginConfig):
         plugin_dir = Path(__file__).resolve().parent.parent
         env_path = plugin_dir / ".env.hubspot"
         if env_path.exists():
-            from dotenv import load_dotenv
-
-            load_dotenv(dotenv_path=env_path)
-            logger.info(f"HubSpot plugin loaded dev environment variables from: {env_path}")
+            try:
+                from dotenv import load_dotenv
+            except ImportError:
+                logger.warning("python-dotenv is not installed; skipping .env.hubspot loading")
+            else:
+                load_dotenv(dotenv_path=env_path)
+                logger.info(f"HubSpot plugin loaded dev environment variables from: {env_path}")
